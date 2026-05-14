@@ -194,4 +194,9 @@ node_modules/
 # Database
 *.db
 *.sqlite
+
+app.css
+app.js
+index.css
+index.js
 # ----------------------------------------------------------------
