@@ -1,16 +1,13 @@
-import './App.css';
+// src/App.js
+import React from 'react';
+// 팀장님 폴더 경로에 맞춰서 불러오기 (경로 예시)
+import LoginPage from './members/팀장님/LoginPage'; 
 
 function App() {
   return (
     <div className="App">
-      <header className="App-header">
-        <h1>🔍 HWP-Xray</h1>
-        <p>AI 기반 학술 논문 분석 챗봇</p>
-        <div style={{ marginTop: '20px', padding: '20px', border: '1px solid #61dafb', borderRadius: '10px' }}>
-          <h3>팀원 여러분 환영합니다! 👋</h3>
-          <p>현재 프론트엔드 기본 세팅이 완료되었습니다.</p>
-        </div>
-      </header>
+      {/* 내가 만든 로그인 페이지가 화면에 뜹니다! */}
+      <LoginPage />
     </div>
   );
 }
