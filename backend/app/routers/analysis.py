@@ -50,6 +50,15 @@ async def analyze_chat(
             }
         )
 
+    if analysis_text and not extracted_docs:
+        extracted_docs.append(
+            {
+                "filename": "이전 분석 내용",
+                "format": "analysis_text",
+                "text": analysis_text,
+            }
+        )
+
     # fallback_answer는 OpenAI 키가 없어도 항상 만들 수 있는 기본 분석입니다.
     # 키워드와 중요 문장 후보를 Python 로직으로 추출합니다.
     fallback_answer = build_analysis_answer(question, extracted_docs)

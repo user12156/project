@@ -306,10 +306,7 @@ function AnalysisC({ projectId, projectTitle, restoredData, clearRestore, onConv
 
     const pendingFiles = [...filesToSend];
     const uploadableFiles = pendingFiles.filter(isUploadableFile);
-    if (pendingFiles.length > 0 && uploadableFiles.length === 0) {
-      window.alert('저장된 파일 기록은 이름만 복원된 상태입니다. 실제 분석을 하려면 파일을 다시 선택해주세요.');
-      return;
-    }
+    const hasStoredFileRecords = pendingFiles.length > 0 && uploadableFiles.length === 0;
 
     const question = nextQuestion || '업로드한 문서를 요약해줘';
     setPromptText('');
@@ -317,7 +314,13 @@ function AnalysisC({ projectId, projectTitle, restoredData, clearRestore, onConv
 
     const fileNames = pendingFiles.map((file) => file.name).filter(Boolean).join(', ');
     const fileMessage = pendingFiles.length > 0
-      ? { id: `uploaded-files-${Date.now()}`, role: 'system', text: `업로드된 파일: ${fileNames}` }
+      ? {
+          id: `uploaded-files-${Date.now()}`,
+          role: 'system',
+          text: hasStoredFileRecords
+            ? `저장된 파일 기록 기준으로 분석합니다: ${fileNames}`
+            : `업로드된 파일: ${fileNames}`,
+        }
       : null;
     const userMessage = { id: `user-${Date.now()}`, role: 'user', text: question };
     const messagesWithQuestion = [...messages, ...(fileMessage ? [fileMessage] : []), userMessage];
