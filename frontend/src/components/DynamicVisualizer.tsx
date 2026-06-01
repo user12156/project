@@ -281,28 +281,11 @@ export const DynamicVisualizer = ({ config, fallbackTitle }: { config: any, fall
     );
   };
 
-  const renderMindmap = () => {
-    // Basic fallback for mindmap
-    return (
-      <div className="mini-mindmap">
-        <div className="center-node">{fallbackTitle || '마인드맵'}</div>
-        <div className="tree-trunk" aria-hidden="true"></div>
-        <div className="branches">
-          {safeData.slice(0, 5).map((branch: any, index: number) => {
-            const label = branch.label || branch.name || branch.key || `노드 ${index + 1}`;
-            return <span className={`branch branch-${index + 1}`} key={index}>{label}</span>;
-          })}
-        </div>
-      </div>
-    );
-  };
-
   return (
     <div className="dynamic-visualizer" style={{ width: '100%', padding: '16px 0 24px 0', minHeight: '340px' }}>
       {actualType === 'chart' && renderChart()}
       {actualType === 'table' && renderTable()}
-      {actualType === 'mindmap' && renderMindmap()}
-      {!['chart', 'table', 'mindmap'].includes(actualType) && renderTable()}
+      {!['chart', 'table'].includes(actualType) && renderTable()}
     </div>
   );
 };

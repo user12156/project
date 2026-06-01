@@ -172,42 +172,6 @@ export const TopMenuBar = styled.div`
   .actions { 
     display: flex; gap: 8px; align-items: center;
 
-    .api-key-box {
-      height: 36px;
-      min-width: 210px;
-      border: 1px solid #bfdbfe;
-      border-radius: 6px;
-      background: #f8fbff;
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 0 9px;
-      box-sizing: border-box;
-
-      i {
-        color: #2563eb;
-        font-size: 12px;
-      }
-
-      select {
-        height: 24px;
-        border: 1px solid #dbeafe;
-        border-radius: 5px;
-        background: #ffffff;
-        color: #2563eb;
-        font-size: 11px;
-        font-weight: 850;
-        outline: none;
-      }
-
-      .server-key-note {
-        color: #64748b;
-        font-size: 12px;
-        font-weight: 750;
-        white-space: nowrap;
-      }
-    }
-
     button { 
       background: #ffffff;              /* 💡 버튼 배경을 흰색으로 전환하여 더 정갈하게 변경 */
       border: 1px solid #cbd5e1; 
@@ -239,9 +203,6 @@ export const TopMenuBar = styled.div`
         min-width: 120px;
       }
 
-      .api-key-box {
-        width: 100%;
-      }
     }
   }
 `;

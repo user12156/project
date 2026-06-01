@@ -6,8 +6,6 @@ import axios from 'axios';
 
 interface AnalysisChatOptions {
   provider?: string;
-  openaiApiKey?: string;
-  googleApiKey?: string;
   conversationId?: string;
 }
 
@@ -92,9 +90,7 @@ export const analysisAPI = {
     const formData = new FormData();
     formData.append('question', question);
     if (options.conversationId) formData.append('conversation_id', options.conversationId);
-    formData.append('llm_provider', options.provider || 'google');
-    if (options.openaiApiKey) formData.append('openai_api_key', options.openaiApiKey);
-    if (options.googleApiKey) formData.append('google_api_key', options.googleApiKey);
+    formData.append('llm_provider', options.provider || 'openai');
     if (analysisText) formData.append('analysis_text', analysisText);
     files.filter(isBrowserFile).forEach((file) => formData.append('files', file, file.name));
 
@@ -103,9 +99,7 @@ export const analysisAPI = {
   generateChatTitle: (question: string, options: AnalysisChatOptions = {}, analysisText = '') => {
     const formData = new FormData();
     formData.append('question', question);
-    formData.append('llm_provider', options.provider || 'google');
-    if (options.openaiApiKey) formData.append('openai_api_key', options.openaiApiKey);
-    if (options.googleApiKey) formData.append('google_api_key', options.googleApiKey);
+    formData.append('llm_provider', options.provider || 'openai');
     if (analysisText) formData.append('analysis_text', analysisText);
 
     return apiClient.post('/api/analysis/title', formData, {

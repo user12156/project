@@ -1,6 +1,7 @@
 # 초보자 안내: OpenAI 또는 Gemini 같은 외부 AI API를 호출해 더 자연스러운 분석 답변을 만드는 서비스입니다.
 
 import json
+import os
 import re
 
 from app.core.config import settings

@@ -48,6 +48,16 @@ def _env_int(name: str, default: int) -> int:
         raise RuntimeError(f"{name} 환경변수는 숫자여야 합니다.") from exc
 
 
+def _env_float(name: str, default: float) -> float:
+    value = os.getenv(name)
+    if value is None or not value.strip():
+        return default
+    try:
+        return float(value)
+    except ValueError as exc:
+        raise RuntimeError(f"{name} 환경변수는 숫자여야 합니다.") from exc
+
+
 def _env_list(name: str, default: list[str]) -> list[str]:
     configured = os.getenv(name, "")
     raw_values = configured.split(",") if configured else default
@@ -99,6 +109,13 @@ class Settings:
     google_api_key: str
     gemini_api_key: str
     gemini_model: str
+    enable_bert_grounding: bool
+    bert_grounding_model: str
+    bert_grounding_threshold: float
+    bert_grounding_instruction: str
+    enable_topic_modeling: bool
+    topic_model_backend: str
+    topic_model_limit: int
 
     @property
     def is_production(self) -> bool:
@@ -119,6 +136,10 @@ class Settings:
             raise RuntimeError("MAX_UPLOAD_FILES는 1 이상이어야 합니다.")
         if self.hwp_parser_timeout_seconds <= 0:
             raise RuntimeError("HWP_PARSER_TIMEOUT_SECONDS는 1 이상이어야 합니다.")
+        if not 0 < self.bert_grounding_threshold <= 1:
+            raise RuntimeError("BERT_GROUNDING_THRESHOLD는 0보다 크고 1 이하여야 합니다.")
+        if self.topic_model_limit <= 0:
+            raise RuntimeError("TOPIC_MODEL_LIMIT는 1 이상이어야 합니다.")
 
 
 def create_settings() -> Settings:
@@ -148,6 +169,19 @@ def create_settings() -> Settings:
         google_api_key=os.getenv("GOOGLE_API_KEY", "").strip(),
         gemini_api_key=os.getenv("GEMINI_API_KEY", "").strip(),
         gemini_model=os.getenv("GEMINI_MODEL", "gemini-2.0-flash").strip(),
+        enable_bert_grounding=_env_bool("ENABLE_BERT_GROUNDING", True),
+        bert_grounding_model=os.getenv(
+            "BERT_GROUNDING_MODEL",
+            "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+        ).strip(),
+        bert_grounding_threshold=_env_float("BERT_GROUNDING_THRESHOLD", 0.62),
+        bert_grounding_instruction=os.getenv(
+            "BERT_GROUNDING_INSTRUCTION",
+            "Given an answer sentence, retrieve the most relevant source passage from the uploaded document.",
+        ).strip(),
+        enable_topic_modeling=_env_bool("ENABLE_TOPIC_MODELING", True),
+        topic_model_backend=os.getenv("TOPIC_MODEL_BACKEND", "bertopic").strip().lower(),
+        topic_model_limit=_env_int("TOPIC_MODEL_LIMIT", 5),
     )
     settings.validate()
     return settings

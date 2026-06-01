@@ -166,12 +166,38 @@ def _clean_evidence_text(text: str) -> str:
     return " ".join(str(text or "").split())
 
 
-def _merge_llm_answer_with_evidence(llm_answer: str, fallback_answer: dict) -> str:
-    sections = [llm_answer.strip()]
+def _assistant_intro(question: str, intent: str | None = None) -> str:
+    labels = {
+        "summary": "핵심 내용과 중요도",
+        "metrics": "동향과 수치 근거",
+        "compare": "비교와 차이점",
+        "extract": "중요 문장 발췌",
+        "시각화": "시각화 자료",
+        "general": "문서 분석",
+    }
+    label = labels.get(intent or "general", "문서 분석")
+    if question:
+        return f"질문하신 내용은 {label}에 관한 것으로 보입니다. 제가 문서에서 근거를 뽑아 정리해볼게요."
+    return "업로드한 문서를 기준으로 핵심 내용을 먼저 정리해볼게요."
+
+
+def _merge_llm_answer_with_evidence(question: str, llm_answer: str, fallback_answer: dict) -> str:
+    sections = [
+        _assistant_intro(question, fallback_answer.get("intent")),
+        llm_answer.strip(),
+    ]
 
     metrics = fallback_answer.get("metrics") or []
     if metrics:
         sections.append("[수치 후보]\n" + "\n".join(f"- {metric}" for metric in metrics[:6]))
+
+    topics = fallback_answer.get("topics") or []
+    if topics:
+        topic_lines = []
+        for topic in topics[:5]:
+            keywords = ", ".join(topic.get("keywords", [])[:5]) or topic.get("label", "주제")
+            topic_lines.append(f"- {topic.get('label', '주제')}: {keywords}")
+        sections.append("[문서 주제 후보]\n" + "\n".join(topic_lines))
 
     relevant_chunks = fallback_answer.get("relevant_chunks") or []
     if relevant_chunks:
@@ -209,7 +235,8 @@ def _concise_grounded_answer(question: str, fallback_answer: dict) -> str:
         for token in ("PT-AI", "AGI", "EEN", "TOP100", "HLMI")
     )
     sections = [
-        "LLM 답변에 문서에서 확인되지 않는 내용이 섞일 가능성이 있어, 문서 근거로 확인되는 내용만 짧게 정리했습니다."
+        _assistant_intro(question, intent),
+        "OpenAI 키가 없거나 호출하지 못해, 현재 문서에서 확인되는 근거만 로컬로 정리했습니다."
     ]
 
     if has_ai_prediction_context and (
@@ -225,6 +252,10 @@ def _concise_grounded_answer(question: str, fallback_answer: dict) -> str:
         summary = fallback_answer.get("summary", "")
         if summary:
             sections.append(f"\n[요약]\n{_clean_evidence_text(summary)[:900]}")
+
+    metrics = fallback_answer.get("metrics") or []
+    if metrics:
+        sections.append("\n[수치 후보]\n" + "\n".join(f"- {metric}" for metric in metrics[:8]))
 
     if relevant_chunks:
         evidence_lines = []
@@ -246,7 +277,7 @@ def _concise_grounded_answer(question: str, fallback_answer: dict) -> str:
 async def analyze_chat(
     question: str = Form(""),
     conversation_id: str = Form(""),
-    llm_provider: str = Form("google"),
+    llm_provider: str = Form("openai"),
     openai_api_key: str = Form(""),
     google_api_key: str = Form(""),
     files: list[UploadFile] = File(default=[]),
@@ -262,7 +293,7 @@ async def analyze_chat(
     elif analysis_text:
         extracted_docs = []
     else:
-        validate_upload_count(files, required=True)
+        extracted_docs = []
 
     for upload in files:
         # UploadFile은 FastAPI가 제공하는 업로드 파일 객체입니다.
@@ -283,30 +314,47 @@ async def analyze_chat(
     if files and session_key and extracted_docs:
         DOCUMENT_SESSION_CACHE[session_key] = extracted_docs
 
+    if analysis_text and not extracted_docs:
+        extracted_docs.append(
+            {
+                "filename": "이전 분석 내용",
+                "format": "analysis_text",
+                "text": analysis_text,
+            }
+        )
+
     fallback_answer = build_analysis_answer(question, extracted_docs)
     has_grounded_docs = any(str(doc.get("text", "")).strip() for doc in extracted_docs)
     is_visual_request = _is_visual_request(question)
     deterministic_visual = _visual_fallback(question, extracted_docs) if is_visual_request else None
-    selected_provider = os.getenv("LLM_PROVIDER") or llm_provider.strip() or "google"
-    if selected_provider.lower() == "google":
-        request_key = google_api_key.strip()
-        env_key = settings.google_api_key or settings.gemini_api_key
-    else:
-        request_key = openai_api_key.strip()
-        env_key = settings.openai_api_key
+    # 분석 화면은 OpenAI 전용으로 단순화했습니다.
+    # Google/Gemini 키가 .env에 있어도 자동 전환하지 않고, OpenAI 키가 없으면 로컬 분석으로 내려갑니다.
+    selected_provider = "openai"
+    request_key = openai_api_key.strip()
+    env_key = settings.openai_api_key
+
     llm_key_source = "request" if request_key else "env" if env_key else "none"
     llm_key_received = llm_key_source != "none"
 
     if not has_grounded_docs:
+        no_context_answer = (
+            f"{_assistant_intro(question, fallback_answer.get('intent'))}\n\n"
+            "현재 분석할 문서 본문이 없습니다.\n\n"
+            "[필요한 자료]\n"
+            "- 질문에 맞는 PDF, HWPX, HWP, TXT, CSV, 이미지 OCR 자료를 먼저 업로드해주세요.\n"
+            "- \"40대 여성 이동 동향\" 같은 질문은 연령, 성별, 지역, 기간이 포함된 원본 표나 문서가 있어야 근거 기반으로 답할 수 있습니다.\n\n"
+            "[가능한 작업]\n"
+            "- 문서를 업로드하면 핵심 요약, 중요 문장 발췌, 수치 후보, 표/그래프 생성을 진행합니다."
+        )
         return {
             **fallback_answer,
-            "answer": "업로드 문서 근거를 찾을 수 없어 LLM 답변을 생성하지 않았습니다. 문서를 다시 업로드한 뒤 질문해주세요.",
+            "answer": no_context_answer,
             "llm_used": False,
-            "provider": selected_provider,
+            "provider": None,
             "model": None,
-            "llm_error": "No grounded document context",
-            "llm_key_received": llm_key_received,
-            "llm_key_source": llm_key_source,
+            "llm_error": None,
+            "llm_key_received": False,
+            "llm_key_source": None,
             "suggested_questions": [],
         }
 
@@ -367,6 +415,7 @@ async def analyze_chat(
             "answer": json.dumps(visual_config, ensure_ascii=False),
             "keywords": fallback_answer.get("keywords", []),
             "metrics": fallback_answer.get("metrics", []),
+            "topics": fallback_answer.get("topics", []),
             "relevant_chunks": fallback_answer.get("relevant_chunks", []),
             "intent": fallback_answer.get("intent", "시각화"),
             "llm_used": True,
@@ -404,7 +453,7 @@ async def analyze_chat(
             "llm_used": False,
             "provider": llm_answer.get("provider"),
             "model": llm_answer.get("model"),
-            "llm_error": f"Grounding validation failed: {grounding.get('reason')}",
+            "llm_error": "OpenAI 답변에 문서 근거와 맞지 않는 내용이 있어 로컬 근거 답변으로 전환했습니다.",
             "llm_key_received": llm_key_received,
             "llm_key_source": llm_key_source,
             "suggested_questions": [],
@@ -416,6 +465,7 @@ async def analyze_chat(
             "answer": json.dumps(visual_config, ensure_ascii=False),
             "keywords": fallback_answer.get("keywords", []),
             "metrics": fallback_answer.get("metrics", []),
+            "topics": fallback_answer.get("topics", []),
             "relevant_chunks": fallback_answer.get("relevant_chunks", []),
             "intent": fallback_answer.get("intent", "시각화"),
             "llm_used": True,
@@ -428,9 +478,10 @@ async def analyze_chat(
 
     return {
         **fallback_answer,
-        "answer": _merge_llm_answer_with_evidence(llm_answer["answer"], fallback_answer),
+        "answer": _merge_llm_answer_with_evidence(question, llm_answer["answer"], fallback_answer),
         "keywords": fallback_answer.get("keywords", []) or llm_answer.get("keywords", []),
         "metrics": fallback_answer.get("metrics", []),
+        "topics": fallback_answer.get("topics", []),
         "relevant_chunks": fallback_answer.get("relevant_chunks", []),
         "intent": llm_answer.get("intent", fallback_answer.get("intent", "분석")),
         "llm_used": True,
@@ -441,12 +492,12 @@ async def analyze_chat(
 @router.post("/title")
 async def generate_title(
     question: str = Form(""),
-    llm_provider: str = Form("google"),
+    llm_provider: str = Form("openai"),
     openai_api_key: str = Form(""),
     google_api_key: str = Form(""),
     analysis_text: str = Form("")
 ):
-    selected_provider = os.getenv("LLM_PROVIDER") or llm_provider.strip() or "google"
+    selected_provider = "openai"
     
     from ..services.llm_analysis import generate_chat_title
     

@@ -403,7 +403,7 @@ function ShareC({ onRestoreTrigger, username = 'Guest', initialProject = null })
           ...item,
         };
         const rawType = mergedItem.type || mergedItem.kind;
-        const isVisual = ['chart', 'table', 'mindmap'].includes(rawType) || mergedItem.data || mergedItem.columns || mergedItem.series;
+        const isVisual = ['chart', 'table'].includes(rawType) || mergedItem.data || mergedItem.columns || mergedItem.series;
         const nextAsset = {
           ...mergedItem,
           id: `thread-${item.id}`,
@@ -982,7 +982,7 @@ function ShareC({ onRestoreTrigger, username = 'Guest', initialProject = null })
   };
 
   const renderVisualPreview = (asset) => {
-    if (asset.data || asset.columns || asset.series || ['chart', 'table', 'mindmap'].includes(asset.kind || asset.type)) {
+    if (asset.data || asset.columns || asset.series || ['chart', 'table'].includes(asset.kind || asset.type)) {
       return <DynamicVisualizer config={asset} fallbackTitle={asset.title} />;
     }
     if (asset.kind === 'table') {

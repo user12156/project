@@ -14,6 +14,7 @@ from typing import Iterable
 from xml.etree import ElementTree
 
 from app.core.config import settings
+from app.services.topic_modeling import extract_topics
 
 # 이 파일은 AI가 직접 동작하는 곳이 아니라, AI에 넣을 텍스트를 준비하는 전처리 서비스입니다.
 # 파일 형식별로 본문 텍스트를 추출하고, OpenAI 키가 없을 때 쓸 기본 분석 결과도 만듭니다.
@@ -64,6 +65,76 @@ DOMAIN_TERMS = {
     "벤치마크",
     "마인드맵",
     "시각화",
+}
+
+INTENT_CUE_TERMS = {
+    "summary": {
+        "중요",
+        "중요도",
+        "핵심",
+        "요약",
+        "우선순위",
+        "의미",
+        "강조",
+        "주제",
+        "결론",
+        "목적",
+        "필요성",
+    },
+    "metrics": {
+        "실험",
+        "결과",
+        "성능",
+        "정확도",
+        "정밀도",
+        "재현율",
+        "비율",
+        "수치",
+        "평가",
+        "검증",
+        "동향",
+        "추이",
+        "변화",
+        "증가",
+        "감소",
+        "이동",
+        "이동량",
+    },
+    "compare": {
+        "비교",
+        "차이",
+        "공통점",
+        "차별점",
+        "반면",
+        "그러나",
+        "반대로",
+        "유사",
+    },
+    "extract": {
+        "문장",
+        "발췌",
+        "인용",
+        "근거",
+        "부분",
+        "구절",
+        "원문",
+    },
+}
+
+QUERY_EXPANSIONS = {
+    "중요도": {"중요", "핵심", "우선순위", "비중", "영향", "강조", "의미", "필요성"},
+    "중요": {"중요도", "핵심", "우선순위", "의미", "필요성"},
+    "요약": {"핵심", "개요", "정리", "결론", "목적"},
+    "분석": {"핵심", "근거", "결과", "특징", "의미"},
+    "결과": {"실험", "성능", "수치", "평가", "검증"},
+    "성능": {"정확도", "정밀도", "재현율", "f1", "평가", "결과"},
+    "동향": {"추이", "변화", "증가", "감소", "흐름", "수치"},
+    "추이": {"동향", "변화", "증가", "감소", "흐름", "수치"},
+    "이동": {"이동량", "전입", "전출", "지역", "동향", "추이"},
+    "이동량": {"이동", "전입", "전출", "지역", "동향", "추이"},
+    "비교": {"차이", "공통점", "차별점", "반면", "유사"},
+    "차이": {"비교", "차별점", "반면", "다른"},
+    "발췌": {"문장", "근거", "구절", "인용", "원문"},
 }
 
 KOREAN_SUFFIXES = (
@@ -204,16 +275,46 @@ def preprocess_korean_text(text: str, fix_spacing: bool = False) -> str:
 # 문장을 대략적으로 나눕니다.
 # 완전한 자연어 처리 라이브러리는 아니고, 한국어/영어 문장 구분자를 기준으로 단순 분리합니다.
 def _sentences(text: str) -> list[str]:
-    pieces = re.split(r"(?<=[.!?。！？])\s+|(?<=[다요음함임됨])\.\s*|\n+|(?<=다)\s+", text)
+    normalized = str(text or "")
+    normalized = re.sub(r"([.!?。！？])", r"\1\n", normalized)
+    normalized = re.sub(r"((?:한다|했다|된다|였다|이다|있다|없다|같다|높다|낮다|크다|작다|된다|한다|보인다|나타났다|제시한다|설명한다|분석한다|정리한다|의미한다|필요하다|중요하다|가능하다|어렵다|쉽다|다|요|음|함|임|됨))\s+", r"\1\n", normalized)
+    normalized = re.sub(r"([;；])\s+", r"\1\n", normalized)
+    pieces = re.split(r"\n+|(?<=[.!?。！？])\s+", normalized)
     sentences = []
     seen = set()
     for piece in pieces:
         cleaned = _clean_text(piece)
-        if len(cleaned) < 18 or cleaned in seen:
+        if len(cleaned) < 14 or cleaned in seen:
+            continue
+        if _is_low_value_sentence(cleaned):
             continue
         seen.add(cleaned)
         sentences.append(cleaned)
     return sentences
+
+
+def _is_low_value_sentence(sentence: str) -> bool:
+    compact = _compact_for_match(sentence)
+    if not compact:
+        return True
+    if len(sentence) > 900:
+        return True
+    if "원본그림" in compact or "수식입니다" in sentence:
+        return True
+    if len(re.findall(r"[가-힣A-Za-z]", sentence)) < 8:
+        return True
+    symbol_count = len(re.findall(r"[^가-힣A-Za-z0-9\s.,%()/-]", sentence))
+    if symbol_count / max(len(sentence), 1) > 0.22:
+        return True
+    return False
+
+
+def _is_negative_sentence(sentence: str) -> bool:
+    return bool(re.search(r"(아니다|않다|없다|낮다|제외|부족|어렵다|불가능)", sentence))
+
+
+def _question_wants_negative(question: str) -> bool:
+    return bool(re.search(r"(아닌|제외|낮은|낮다|부족|한계|문제|어려운|불가능|단점)", question or ""))
 
 
 def _strip_korean_suffix(word: str) -> str:
@@ -259,6 +360,86 @@ def _tokenize_terms(text: str) -> list[str]:
         return _regex_terms(text)
 
 
+def _expanded_query_terms(question: str) -> set[str]:
+    terms = set(_tokenize_terms(question or ""))
+    for term in list(terms):
+        terms.update(QUERY_EXPANSIONS.get(term, set()))
+    intent = _question_intent(question)
+    terms.update(INTENT_CUE_TERMS.get(intent, set()))
+    return {term for term in terms if len(term) >= 2}
+
+
+def _sentence_query_overlap(sentence: str, query_terms: set[str]) -> tuple[int, float]:
+    if not query_terms:
+        return 0, 0.0
+    compact_sentence = _compact_for_match(sentence)
+    sentence_terms = set(_tokenize_terms(sentence))
+    matched = {
+        term
+        for term in query_terms
+        if term in sentence_terms or term in compact_sentence
+    }
+    return len(matched), len(matched) / max(len(query_terms), 1)
+
+
+def _sentence_quality_score(sentence: str) -> float:
+    length = len(sentence)
+    if 45 <= length <= 260:
+        score = 2.0
+    elif 24 <= length < 45:
+        score = 0.8
+    elif 260 < length <= 430:
+        score = 0.4
+    else:
+        score = -2.0
+
+    if re.search(r"(따라서|즉|결론|핵심|중요|필요|의미|결과|보여|나타|제안|비교|차이)", sentence):
+        score += 1.2
+    if re.search(r"(아니다|않다|없다|낮다|제외)", sentence):
+        score -= 1.4
+    if re.search(r"\d+(?:\.\d+)?\s?%|\d+\.\d+", sentence):
+        score += 0.9
+    if len(re.findall(r"[,，]", sentence)) > 8:
+        score -= 1.2
+    return score
+
+
+def _semantic_sentence_scores(question: str, sentences: list[str]) -> list[float] | None:
+    """선택형 BERT/Qwen 임베딩으로 질문과 문장 사이의 의미 유사도를 계산합니다.
+
+    sentence-transformers가 없거나 ENABLE_BERT_GROUNDING=false이면 None을 반환하고
+    기존 규칙 기반 발췌만 사용합니다.
+    """
+
+    if not question or not sentences or not settings.enable_bert_grounding:
+        return None
+
+    try:
+        from .grounding import _cosine, _embedding_model
+    except Exception:
+        return None
+
+    model = _embedding_model()
+    if model is None:
+        return None
+
+    instruction = settings.bert_grounding_instruction
+    query = f"Instruct: {instruction}\nQuery: {question}" if instruction else question
+
+    try:
+        embeddings = model.encode(
+            [query, *sentences],
+            normalize_embeddings=True,
+            show_progress_bar=False,
+        )
+    except Exception:
+        return None
+
+    vectors = embeddings.tolist() if hasattr(embeddings, "tolist") else embeddings
+    query_vector = vectors[0]
+    return [round(_cosine(query_vector, sentence_vector), 4) for sentence_vector in vectors[1:]]
+
+
 # 기본 분석에서 중요한 문장 후보를 고르기 위한 점수 함수입니다.
 # 정확도, 실험, 데이터셋, 비교 같은 연구 문서 키워드가 있으면 점수를 더 줍니다.
 def _keyword_score(sentence: str, query_terms: set[str] | None = None, term_weights: Counter | None = None) -> float:
@@ -285,10 +466,11 @@ def _keyword_score(sentence: str, query_terms: set[str] | None = None, term_weig
         "제안",
     ]
     lowered = sentence.lower()
-    score = sum(2.2 for keyword in keywords if keyword in lowered) + min(len(sentence) / 90, 3)
+    score = sum(2.2 for keyword in keywords if keyword in lowered) + _sentence_quality_score(sentence)
     score += len(re.findall(r"\d+(?:\.\d+)?\s?%|\d+\.\d+", sentence)) * 2.5
     if query_terms:
-        score += sum(2.8 for term in query_terms if term and term in lowered)
+        matched_count, coverage = _sentence_query_overlap(sentence, query_terms)
+        score += matched_count * 3.2 + coverage * 6.0
     if term_weights:
         sentence_terms = set(_tokenize_terms(lowered))
         score += sum(min(term_weights.get(term, 0), 4) * 0.38 for term in sentence_terms)
@@ -301,19 +483,37 @@ def _top_sentences(text: str, limit: int = 5, question: str = "") -> list[str]:
     if not sentences:
         return []
 
-    query_terms = set(_frequent_terms(question, 8)) if question else set()
+    query_terms = _expanded_query_terms(question) if question else set()
     term_weights = Counter(_tokenize_terms(text))
+    semantic_scores = _semantic_sentence_scores(question, sentences)
+    scored = []
+    for index, sentence in enumerate(sentences):
+        matched_count, coverage = _sentence_query_overlap(sentence, query_terms)
+        semantic_score = semantic_scores[index] if semantic_scores else None
+        score = (
+            _keyword_score(sentence, query_terms, term_weights)
+            + max(0, 1.6 - index * 0.04)  # 초반 문장에 약간 가중치
+        )
+        if semantic_score is not None:
+            score += semantic_score * 18
+        scored.append((index, sentence, matched_count, coverage, score, semantic_score or 0.0))
+
     ranked = sorted(
-        enumerate(sentences),
+        scored,
         key=lambda item: (
-            _keyword_score(item[1], query_terms, term_weights)
-            + max(0, 2.2 - item[0] * 0.08),  # 초반 문장에 약간 가중치
+            item[4],
+            item[5],
+            item[3],
             -item[0],
         ),
         reverse=True,
     )
+    if question and not _question_wants_negative(question):
+        non_negative = [item for item in ranked if not _is_negative_sentence(item[1])]
+        if non_negative:
+            ranked = non_negative
     selected = sorted(ranked[:limit], key=lambda item: item[0])
-    return [sentence for _, sentence in selected]
+    return [sentence for _, sentence, *_ in selected]
 
 
 # 자주 등장하는 단어를 뽑아 키워드 목록을 만듭니다.
@@ -419,12 +619,7 @@ def _compact_for_match(text: str) -> str:
 
 
 def _query_terms_for_rank(question: str) -> list[str]:
-    terms = []
-    for term in re.findall(r"[A-Za-z가-힣0-9]{2,}", (question or "").lower()):
-        if term.isdigit() or re.fullmatch(r"\d+(?:월|년|분기|일)", term):
-            continue
-        terms.append(term)
-    return terms
+    return list(_expanded_query_terms(question))
 
 
 def rank_relevant_chunks(question: str, extracted_docs: list[dict], limit: int = 6) -> list[dict]:
@@ -462,7 +657,9 @@ def rank_relevant_chunks(question: str, extracted_docs: list[dict], limit: int =
     if not candidates:
         return []
 
-    query_terms = set(_tokenize_terms(question or " ".join(_frequent_terms(" ".join(item["text"] for item in candidates), 8))))
+    query_terms = _expanded_query_terms(question) if question else set(
+        _tokenize_terms(" ".join(_frequent_terms(" ".join(item["text"] for item in candidates), 8)))
+    )
     compact_question = _compact_for_match(question)
     rank_terms = _query_terms_for_rank(question)
     important_phrases = (
@@ -505,6 +702,8 @@ def rank_relevant_chunks(question: str, extracted_docs: list[dict], limit: int =
             if phrase in compact_question and phrase in compact_text:
                 score += 25
         score += sum(1.2 for term in rank_terms if term in compact_text)
+        matched_count, coverage = _sentence_query_overlap(item["text"], query_terms)
+        score += matched_count * 1.8 + coverage * 5.0
         if "원본그림" in compact_text or "수식입니다" in item["text"]:
             score -= 8
 
@@ -522,10 +721,18 @@ def _metric_candidates(text: str, limit: int = 8) -> list[str]:
         r"[^\n]{0,90}?(?:\d+(?:\.\d+)?\s?%|\d+\.\d+)"
     )
     percent_pattern = re.compile(r"[^\n]{0,70}\d+(?:\.\d+)?\s?%[^\n]{0,70}")
+    statistic_unit_pattern = re.compile(
+        r"[^.\n]{0,70}"
+        r"\d{1,3}(?:,\d{3})*(?:\.\d+)?\s?"
+        r"(?:명|건|회|개|원|만원|억원|조원|%|퍼센트|년|월|일|시간|km|㎞)"
+        r"[^.\n]{0,70}"
+    )
 
     candidates = [_clean_text(match.group(0)) for match in metric_pattern.finditer(text)]
     if len(candidates) < limit:
         candidates.extend(_clean_text(match.group(0)) for match in percent_pattern.finditer(text))
+    if len(candidates) < limit:
+        candidates.extend(_clean_text(match.group(0)) for match in statistic_unit_pattern.finditer(text))
 
     unique_candidates = []
     seen = set()
@@ -765,15 +972,32 @@ def _document_from_units(filename: str, file_format: str, units: list[dict]) -> 
 
 def _question_intent(question: str) -> str:
     lowered = (question or "").lower()
-    if any(word in lowered for word in ["중요", "핵심", "요약", "summary", "main"]):
+    if any(word in lowered for word in ["중요", "핵심", "요약", "분석", "설명", "summary", "main"]):
         return "summary"
-    if any(word in lowered for word in ["실험", "결과", "정확도", "성능", "score", "accuracy", "f1"]):
+    if any(word in lowered for word in ["실험", "결과", "정확도", "성능", "동향", "추이", "이동", "이동량", "증가", "감소", "변화", "score", "accuracy", "f1"]):
         return "metrics"
     if any(word in lowered for word in ["비교", "차이", "다른", "compare", "difference"]):
         return "compare"
     if any(word in lowered for word in ["문장", "발췌", "인용", "quote", "extract"]):
         return "extract"
     return "general"
+
+
+def _intent_label(intent: str) -> str:
+    return {
+        "summary": "핵심 내용과 중요도",
+        "metrics": "동향과 수치 근거",
+        "compare": "비교와 차이점",
+        "extract": "중요 문장 발췌",
+        "general": "문서 분석",
+    }.get(intent, "문서 분석")
+
+
+def _intent_intro(question: str, intent: str) -> str:
+    label = _intent_label(intent)
+    if question:
+        return f"질문하신 내용은 {label}에 관한 것으로 보입니다. 문서에서 근거가 되는 부분을 먼저 뽑아볼게요."
+    return "업로드한 문서를 기준으로 핵심 내용을 먼저 정리해볼게요."
 
 
 def _doc_brief(doc: dict) -> dict:
@@ -1028,6 +1252,7 @@ def build_analysis_answer(question: str, extracted_docs: list[dict]) -> dict:
     summary_points = _extractive_summary(relevant_text, question, 4)
     terms = _frequent_terms(combined_text)
     metrics = _metric_candidates(combined_text)
+    topics = extract_topics(combined_text)
 
     if not combined_text.strip():
         summary = (
@@ -1041,8 +1266,10 @@ def build_analysis_answer(question: str, extracted_docs: list[dict]) -> dict:
     keyword_sets = {item["filename"]: set(item["keywords"]) for item in comparison}
 
     answer_lines = [
-        "OpenAI 없이 로컬 기본 분석으로 처리했습니다.",
-        f"질문 의도: {intent}",
+        _intent_intro(question, intent),
+        "",
+        "LLM 없이 로컬 기본 분석으로 처리했습니다.",
+        f"분석 기준: {_intent_label(intent)}",
         "",
         "[핵심 내용 요약]",
     ]
@@ -1075,13 +1302,23 @@ def build_analysis_answer(question: str, extracted_docs: list[dict]) -> dict:
     else:
         answer_lines.append("- 정확도, F1, AUC, % 등으로 표시된 실험 수치 후보를 찾지 못했습니다.")
 
+    if topics:
+        answer_lines.extend(["", "[문서 주제 후보]"])
+        for topic in topics[:5]:
+            keywords = ", ".join(topic.get("keywords", [])[:5]) or topic.get("label", "주제")
+            example = topic.get("examples", [""])[0] if topic.get("examples") else ""
+            answer_lines.append(f"- {topic.get('label', '주제')}: {keywords}")
+            if example:
+                answer_lines.append(f"  · 근거 문장: {example[:180]}")
+
     if relevant_chunks:
         answer_lines.extend([
             "",
             "[질문 관련 문서 구간]",
         ])
         for chunk in relevant_chunks[:4]:
-            preview = _clean_text(chunk["text"])[:260]
+            focused = _top_sentences(chunk["text"], 1, question)
+            preview = (focused[0] if focused else _clean_text(chunk["text"]))[:260]
             source_label = chunk.get("source_label") or f"Chunk {chunk['chunk_index']}"
             answer_lines.append(
                 f"- {chunk['filename']} {source_label} "
@@ -1124,8 +1361,10 @@ def build_analysis_answer(question: str, extracted_docs: list[dict]) -> dict:
     return {
         "answer": "\n".join(answer_lines),
         "summary": summary,
+        "intent": intent,
         "keywords": terms,
         "metrics": metrics,
+        "topics": topics,
         "documents": comparison,
         "relevant_chunks": relevant_chunks,
     }
