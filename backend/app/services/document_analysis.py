@@ -14,10 +14,7 @@ from typing import Iterable
 from xml.etree import ElementTree
 
 from ..core.config import settings
-<<<<<<< HEAD
-=======
 from .topic_modeling import extract_topics
->>>>>>> 668b885c33dfb63e222feb660e03e2de50a9de10
 
 # 이 파일은 AI가 직접 동작하는 곳이 아니라, AI에 넣을 텍스트를 준비하는 전처리 서비스입니다.
 # 파일 형식별로 본문 텍스트를 추출하고, OpenAI 키가 없을 때 쓸 기본 분석 결과도 만듭니다.
@@ -36,13 +33,10 @@ EXTRACTION_NOISE_PATTERN = re.compile(r"[\u0100-\u024f\u3400-\u4dbf\u4e00-\u9fff
 IMAGE_META_PATTERNS = (
     re.compile(r"원본\s*그림의\s*이름\s*:\s*CLP[^\s]+", re.IGNORECASE),
     re.compile(r"원본\s*그림의\s*크기\s*:\s*가로\s*\d+\s*pixel\s*,?\s*세로\s*\d+\s*pixel", re.IGNORECASE),
-<<<<<<< HEAD
-=======
     re.compile(r"그림\s*입니다\.?", re.IGNORECASE),
     re.compile(r"이미지\s*입니다\.?", re.IGNORECASE),
     re.compile(r"binaryitemid\s*[:=]\s*[^\s]+", re.IGNORECASE),
     re.compile(r"href\s*[:=]\s*[^\s]+", re.IGNORECASE),
->>>>>>> 668b885c33dfb63e222feb660e03e2de50a9de10
 )
 FORMULA_NOISE_PATTERN = re.compile(
     r"\{[^{}]{0,100}(?:TIMES|over)[^{}]{0,220}\}|(?:TIMES|over)\s*`?\s*1,?0{2,}",
@@ -820,8 +814,6 @@ def _extractive_summary(text: str, question: str = "", limit: int = 4) -> list[s
 # --- HWPX / HWP 파싱 보조 함수들 (PoC) -----------------------------
 # 이 영역은 HWPX와 HWP 문서에서 텍스트/이미지를 추출하는 전용 파서 로직입니다.
 # HWPX는 Zip+XML 기반 포맷이고, HWP는 구형 한글 바이너리 포맷이므로 각각 다른 접근을 사용합니다.
-<<<<<<< HEAD
-=======
 def _local_name(tag: str) -> str:
     return str(tag or "").split("}", 1)[-1].split(":", 1)[-1].lower()
 
@@ -996,7 +988,6 @@ def _parse_hwpx_body_xml(raw: bytes) -> list[str]:
     return cleaned_blocks
 
 
->>>>>>> 668b885c33dfb63e222feb660e03e2de50a9de10
 def _parse_hwpx_bytes(data: bytes) -> tuple[str, list[dict]]:
     """HWPX(Zip+XML) 포맷을 안전하게 파싱합니다.
 
@@ -1004,35 +995,16 @@ def _parse_hwpx_bytes(data: bytes) -> tuple[str, list[dict]]:
     - text: 문서에서 추출한 텍스트(간단 정리)
     - images: [{'name': str, 'bytes': bytes}] 형태의 추출된 이미지들
     """
-<<<<<<< HEAD
-    texts = []
-=======
     blocks = []
->>>>>>> 668b885c33dfb63e222feb660e03e2de50a9de10
     images = []
     try:
         with zipfile.ZipFile(io.BytesIO(data)) as z:
             for name in z.namelist():
                 lname = name.lower()
-<<<<<<< HEAD
-                # XML 파일에서 텍스트 수집
-                if lname.endswith('.xml'):
-                    try:
-                        raw = z.read(name)
-                        try:
-                            root = ElementTree.fromstring(raw)
-                        except Exception:
-                            # 일부 XML은 네임스페이스/깨진 문자 때문에 파싱이 실패할 수 있습니다.
-                            # 태그 원문을 그대로 넣으면 분석 품질이 떨어지므로 이 파일은 건너뜁니다.
-                            continue
-                        # 모든 텍스트 노드 합치기
-                        texts.append(' '.join(t for t in root.itertext() if t and t.strip()))
-=======
                 # 본문 XML만 문단/표/그림 단위로 수집합니다.
                 if _is_hwpx_body_xml(name):
                     try:
                         blocks.extend(_parse_hwpx_body_xml(z.read(name)))
->>>>>>> 668b885c33dfb63e222feb660e03e2de50a9de10
                     except KeyError:
                         continue
 
@@ -1046,9 +1018,6 @@ def _parse_hwpx_bytes(data: bytes) -> tuple[str, list[dict]]:
     except zipfile.BadZipFile:
         return "", []
 
-<<<<<<< HEAD
-    combined = '\n'.join(_clean_text(t) for t in texts if t)
-=======
     if not blocks:
         # 일부 HWPX 변형은 본문 경로가 다를 수 있어, 마지막 fallback으로 XML 텍스트를 읽되
         # settings/docInfo/metadata 계열은 제외합니다.
@@ -1069,7 +1038,6 @@ def _parse_hwpx_bytes(data: bytes) -> tuple[str, list[dict]]:
             return "", images
 
     combined = '\n\n'.join(block for block in blocks if block)
->>>>>>> 668b885c33dfb63e222feb660e03e2de50a9de10
     return combined, images
 
 
@@ -1454,21 +1422,14 @@ def extract_file_document(filename: str, content: bytes) -> dict:
         return _document_from_units(filename, "PDF", extract_pdf_units(content))
     if extension == ".hwpx":
         parsed = parse_document(content, filename)
-<<<<<<< HEAD
-=======
         raw_text = parsed.get("text", "")
->>>>>>> 668b885c33dfb63e222feb660e03e2de50a9de10
         text = _parsed_text_or_message(
             parsed,
             "HWPX/OWPML 내부에서 추출 가능한 본문 텍스트를 찾지 못했습니다.",
         )
-<<<<<<< HEAD
-        return _document_from_units(filename, "HWPX/OWPML", [{"section_index": 1, "text": text}])
-=======
         document = _document_from_units(filename, "HWPX/OWPML", [{"section_index": 1, "text": text}])
         document["preview_text"] = raw_text or text
         return document
->>>>>>> 668b885c33dfb63e222feb660e03e2de50a9de10
     if extension == ".docx":
         return _document_from_units(filename, "DOCX", [{"section_index": 1, "text": extract_docx(content)}])
     if extension in TEXT_EXTENSIONS:
@@ -1477,12 +1438,6 @@ def extract_file_document(filename: str, content: bytes) -> dict:
         return _document_from_units(filename, "IMAGE", [{"section_index": 1, "text": inspect_image(content)}])
     if extension == ".hwp":
         parsed = parse_document(content, filename)
-<<<<<<< HEAD
-        text = _parsed_text_or_message(parsed, "")
-        if not text:
-            text = extract_hwp(content)
-        return _document_from_units(filename, "HWP", [{"section_index": 1, "text": text}])
-=======
         raw_text = parsed.get("text", "")
         text = _parsed_text_or_message(parsed, "")
         if not text:
@@ -1490,7 +1445,6 @@ def extract_file_document(filename: str, content: bytes) -> dict:
         document = _document_from_units(filename, "HWP", [{"section_index": 1, "text": text}])
         document["preview_text"] = raw_text or text
         return document
->>>>>>> 668b885c33dfb63e222feb660e03e2de50a9de10
     return _document_from_units(filename, "UNKNOWN", [{"section_index": 1, "text": "지원하지 않는 파일 형식입니다."}])
 
 
@@ -1528,20 +1482,6 @@ def _legacy_extract_file_text(filename: str, content: bytes) -> tuple[str, str]:
 # OpenAI API가 없거나 실패했을 때도 답변을 만들기 위한 기본 분석 함수입니다.
 # 진짜 LLM이 아니라, 위에서 추출한 텍스트에서 중요 문장/키워드를 규칙 기반으로 뽑습니다.
 def build_analysis_answer(question: str, extracted_docs: list[dict]) -> dict:
-<<<<<<< HEAD
-    # [CRITICAL FIX] 불필요한 로컬 1차 분석을 완전히 꺼달라는 사용자 요청에 따라,
-    # 키워드 추출, 문장 요약, 수치 검색 등의 무거운 로컬 연산을 모두 해제하고 빈 껍데기만 즉시 반환합니다.
-    # 이제 로컬 서버는 오직 파일 해독 역할만 하며, 모든 문해력과 분석은 GPT 전담으로 돌아갑니다.
-    return {
-        "answer": "로컬 분석이 해제되었습니다.",
-        "summary": "",
-        "intent": "general",
-        "keywords": [],
-        "metrics": [],
-        "topics": [],
-        "documents": [],
-        "relevant_chunks": [],
-=======
     combined_text = "\n".join(doc["text"] for doc in extracted_docs if doc["text"])
     intent = _question_intent(question)
     relevant_chunks = rank_relevant_chunks(question, extracted_docs, 6)
@@ -1665,7 +1605,6 @@ def build_analysis_answer(question: str, extracted_docs: list[dict]) -> dict:
         "topics": topics,
         "documents": comparison,
         "relevant_chunks": relevant_chunks,
->>>>>>> 668b885c33dfb63e222feb660e03e2de50a9de10
     }
 
 

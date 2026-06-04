@@ -11,15 +11,9 @@ pytesseract==0.3.13
 python-dotenv==1.0.1
 python-multipart==0.0.9
 pyhwpx; platform_system == "Windows"
-<<<<<<< HEAD
-# [CRITICAL FIX] 불필요한 무거운 AI/머신러닝 패키지 삭제
-# sentence-transformers, transformers, accelerate, scikit-learn, bertopic 제거 완료
-# 이로써 도커 이미지 크기가 3GB 이상 줄어들고 빌드 속도가 엄청나게 빨라집니다.
-=======
 sentence-transformers==3.3.1
 transformers>=4.51.0
 accelerate>=1.2.0
 scikit-learn>=1.4.0
 bertopic==0.16.4
->>>>>>> 668b885c33dfb63e222feb660e03e2de50a9de10
 uvicorn[standard]==0.34.0

@@ -688,7 +688,6 @@ function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, c
       const url = URL.createObjectURL(selectedSourceFile);
       setSourcePreview({ kind: isPdf ? 'pdf' : 'image', url, text: '', message: '', fileKey: getFileKey(selectedSourceFile) });
       return () => URL.revokeObjectURL(url);
- kim_v3
     }
 
     if (isText) {
@@ -740,7 +739,6 @@ function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, c
     }
 
     setSourcePreview({
- kim_v3
       kind: 'meta',
       url: '',
       text: '',
@@ -790,7 +788,6 @@ function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, c
     });
     setSelectedSourceKey(getFileKey(selectedFiles[0]));
     event.target.value = '';
- kim_v3
     window.setTimeout(() => promptInputRef.current?.focus(), 0);
   };
 

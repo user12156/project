@@ -111,8 +111,6 @@ def _validate_visual_config(config: dict, extracted_docs: list[dict]) -> bool:
     return bool(numbers) and all(_compact_number(number) in evidence for number in numbers)
 
 
-<<<<<<< HEAD
-=======
 def _build_birth_trend_visual(extracted_docs: list[dict]) -> dict | None:
     source = "\n".join(doc.get("text", "") for doc in extracted_docs)
     compact = re.sub(r"\s+", " ", source)
@@ -159,7 +157,6 @@ def _visual_fallback(question: str, extracted_docs: list[dict]) -> dict | None:
     return None
 
 
->>>>>>> 668b885c33dfb63e222feb660e03e2de50a9de10
 def _clean_evidence_text(text: str) -> str:
     return " ".join(str(text or "").split())
 
@@ -180,14 +177,6 @@ def _assistant_intro(question: str, intent: str | None = None) -> str:
 
 
 def _merge_llm_answer_with_evidence(question: str, llm_answer: str, fallback_answer: dict) -> str:
-<<<<<<< HEAD
-    # [CRITICAL FIX] GPT가 정상적으로 작동했을 때는 로컬 AI의 불필요한 인트로("제가 정리해볼게요")와
-    # 로컬 추출 근거(초록 팝업 버튼들)를 강제로 이어붙이지 않고, 순수한 GPT 답변만 반환합니다.
-    return llm_answer.strip()
-
-
-def _concise_grounded_answer(question: str, fallback_answer: dict, fallback_reason: str = "OpenAI 키가 없거나 호출하지 못해, 현재 문서에서 확인되는 근거만 로컬로 정리했습니다.") -> str:
-=======
     sections = [
         _assistant_intro(question, fallback_answer.get("intent")),
         llm_answer.strip(),
@@ -232,8 +221,7 @@ def _concise_grounded_answer(question: str, fallback_answer: dict, fallback_reas
     return "\n\n".join(section for section in sections if section.strip())
 
 
-def _concise_grounded_answer(question: str, fallback_answer: dict) -> str:
->>>>>>> 668b885c33dfb63e222feb660e03e2de50a9de10
+def _concise_grounded_answer(question: str, fallback_answer: dict, fallback_reason: str | None = None) -> str:
     relevant_chunks = fallback_answer.get("relevant_chunks") or []
     intent = fallback_answer.get("intent") or "general"
     evidence_blob = " ".join(str(chunk.get("text", "")) for chunk in relevant_chunks[:4])
@@ -243,11 +231,7 @@ def _concise_grounded_answer(question: str, fallback_answer: dict) -> str:
     )
     sections = [
         _assistant_intro(question, intent),
-<<<<<<< HEAD
-        fallback_reason,
-=======
-        "OpenAI 키가 없거나 호출하지 못해, 현재 문서에서 확인되는 근거만 로컬로 정리했습니다.",
->>>>>>> 668b885c33dfb63e222feb660e03e2de50a9de10
+        fallback_reason or "OpenAI 키가 없거나 호출하지 못해, 현재 문서에서 확인되는 근거만 로컬로 정리했습니다.",
     ]
 
     if has_ai_prediction_context and (
@@ -315,10 +299,7 @@ def run_analysis_pipeline(
     fallback_answer = build_analysis_answer(question, extracted_docs)
     has_grounded_docs = any(str(doc.get("text", "")).strip() for doc in extracted_docs)
     is_visual_request = _is_visual_request(question)
-<<<<<<< HEAD
-=======
     deterministic_visual = _visual_fallback(question, extracted_docs) if is_visual_request else None
->>>>>>> 668b885c33dfb63e222feb660e03e2de50a9de10
 
     request_key = (openai_api_key or "").strip()
     env_key = settings.openai_api_key
@@ -343,8 +324,6 @@ def run_analysis_pipeline(
             "suggested_questions": [],
         }
 
-<<<<<<< HEAD
-=======
     if deterministic_visual:
         return {
             **fallback_answer,
@@ -358,7 +337,6 @@ def run_analysis_pipeline(
             "suggested_questions": [],
         }
 
->>>>>>> 668b885c33dfb63e222feb660e03e2de50a9de10
     llm_answer = analyze_with_llm(
         question,
         extracted_docs,
@@ -368,8 +346,6 @@ def run_analysis_pipeline(
     )
 
     if not llm_answer.get("llm_used"):
-<<<<<<< HEAD
-=======
         if deterministic_visual:
             return {
                 **fallback_answer,
@@ -382,10 +358,13 @@ def run_analysis_pipeline(
                 "llm_key_source": llm_key_source,
                 "suggested_questions": llm_answer.get("suggested_questions", []),
             }
->>>>>>> 668b885c33dfb63e222feb660e03e2de50a9de10
         return {
             **fallback_answer,
-            "answer": _concise_grounded_answer(question, fallback_answer),
+            "answer": _concise_grounded_answer(
+                question,
+                fallback_answer,
+                llm_answer.get("llm_error") or "OpenAI 호출이 완료되지 않아 현재 문서에서 확인되는 근거만 로컬로 정리했습니다.",
+            ),
             "llm_used": False,
             "provider": llm_answer.get("provider"),
             "model": llm_answer.get("model"),
@@ -420,19 +399,6 @@ def run_analysis_pipeline(
         fallback_answer.get("metrics", []),
     )
     if not grounding.get("passed"):
-<<<<<<< HEAD
-        return {
-            **fallback_answer,
-            "answer": _concise_grounded_answer(
-                question, 
-                fallback_answer, 
-                fallback_reason="OpenAI 답변이 원본 문서의 근거와 일치하지 않는 부분이 발견되어, 안전을 위해 문서에 있는 확실한 근거만으로 답변을 재구성했습니다."
-            ),
-            "llm_used": False,
-            "provider": llm_answer.get("provider"),
-            "model": llm_answer.get("model"),
-            "llm_error": "OpenAI 답변이 문서 근거에 맞지 않는 내용이 있어 로컬 근거 답변으로 변환했습니다.",
-=======
         if deterministic_visual:
             return {
                 **fallback_answer,
@@ -447,12 +413,15 @@ def run_analysis_pipeline(
             }
         return {
             **fallback_answer,
-            "answer": _concise_grounded_answer(question, fallback_answer),
+            "answer": _concise_grounded_answer(
+                question,
+                fallback_answer,
+                "OpenAI 답변에 문서 근거와 맞지 않는 내용이 있어, 현재 문서에서 확인되는 근거만 로컬로 정리했습니다.",
+            ),
             "llm_used": False,
             "provider": llm_answer.get("provider"),
             "model": llm_answer.get("model"),
             "llm_error": "OpenAI 답변에 문서 근거와 맞지 않는 내용이 있어 로컬 근거 답변으로 전환했습니다.",
->>>>>>> 668b885c33dfb63e222feb660e03e2de50a9de10
             "llm_key_received": llm_key_received,
             "llm_key_source": llm_key_source,
             "suggested_questions": llm_answer.get("suggested_questions", []),

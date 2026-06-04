@@ -382,8 +382,6 @@ export const TimelineNode = styled.article<{ $active?: boolean }>`
     padding: 16px 18px;
   }
 
-<<<<<<< HEAD
-=======
   .asset-head {
     display: flex;
     align-items: flex-start;
@@ -392,24 +390,17 @@ export const TimelineNode = styled.article<{ $active?: boolean }>`
     margin-bottom: 8px;
   }
 
->>>>>>> 668b885c33dfb63e222feb660e03e2de50a9de10
   .project-label {
     color: #0ea5a4;
     font-size: 12px;
     font-weight: 800;
-<<<<<<< HEAD
-    margin-bottom: 8px;
-=======
     line-height: 1.35;
->>>>>>> 668b885c33dfb63e222feb660e03e2de50a9de10
   }
 
   .project-label.support {
     color: #64748b;
   }
 
-<<<<<<< HEAD
-=======
   .asset-timestamp {
     flex: 0 0 auto;
     border: 1px solid #dbe7f0;
@@ -423,7 +414,6 @@ export const TimelineNode = styled.article<{ $active?: boolean }>`
     white-space: nowrap;
   }
 
->>>>>>> 668b885c33dfb63e222feb660e03e2de50a9de10
   h4 {
     margin: 0 0 6px 0;
     color: #0f172a;
@@ -435,11 +425,7 @@ export const TimelineNode = styled.article<{ $active?: boolean }>`
     color: #94a3b8;
     font-size: 11.5px;
     font-weight: 700;
-<<<<<<< HEAD
-    margin-bottom: 10px;
-=======
     margin-top: 10px;
->>>>>>> 668b885c33dfb63e222feb660e03e2de50a9de10
   }
 
   .body {
@@ -723,8 +709,6 @@ export const TimelineNode = styled.article<{ $active?: boolean }>`
       padding: 14px;
     }
 
-<<<<<<< HEAD
-=======
     .asset-head {
       display: grid;
       gap: 6px;
@@ -734,7 +718,6 @@ export const TimelineNode = styled.article<{ $active?: boolean }>`
       width: fit-content;
     }
 
->>>>>>> 668b885c33dfb63e222feb660e03e2de50a9de10
     h4 {
       font-size: 14px;
       line-height: 1.4;
@@ -878,11 +861,6 @@ export const RightCoopPanel = styled.aside<{ $error?: boolean }>`
     cursor: pointer;
   }
 
-<<<<<<< HEAD
-  .invite-help {
-    width: calc(100% - 64px);
-    margin: 18px auto 8px auto;
-=======
   .new-share-page-btn {
     width: calc(100% - 64px);
     max-width: 276px;
@@ -914,7 +892,6 @@ export const RightCoopPanel = styled.aside<{ $error?: boolean }>`
   .invite-help {
     width: calc(100% - 64px);
     margin: 0 auto 8px auto;
->>>>>>> 668b885c33dfb63e222feb660e03e2de50a9de10
     color: #92400e;
     font-size: 11.5px;
     font-weight: 800;

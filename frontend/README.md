@@ -1,77 +1,87 @@
-# Getting Started with Create React App
+PaperMate
+=========
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+PaperMate는 PDF, HWPX, DOCX, 이미지, TXT 문서를 업로드해 분석하고, 결과를 프로젝트로 저장해 협업할 수 있는 문서 분석 웹 애플리케이션입니다.
 
-## Available Scripts
+주요 기능
+---------
 
-In the project directory, you can run:
+- 문서 업로드 및 분석
+- AI 기반 질의응답
+- 문서 원본 미리보기와 분석 결과 비교
+- 표, 그래프 등 시각화 자료 생성
+- 프로젝트 저장, 복원, 공유 워크플로우
 
-### `npm start`
+프로젝트 폴더 구조
+------------------
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+역할 분담과 협업을 위해 프로젝트를 모듈 단위로 관리합니다.
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+```text
+frontend/   React 기반 사용자 인터페이스와 화면 구성 요소
+backend/    API 서버, 인증, 프로젝트 저장, 데이터 처리 로직
+docs/       워크플로우 다이어그램, 설계 문서, 회의 기록
+```
 
-### `npm test`
+AI 문서 파싱과 질의응답 모델 처리는 현재 백엔드 서비스 모듈에서 관리하며, 필요하면 추후 `ai-service/`로 분리할 수 있습니다.
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+파트별 환경 설정 가이드
+-----------------------
 
-### `npm run build`
+각 폴더의 README 또는 문서에는 아래 내용을 정리합니다.
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+- 필수 요구 사항: 사용하는 언어 버전, 런타임, 패키지 매니저
+- 환경 변수: 실제 값은 공유하지 않고 `.env.example`에 빈 값 또는 예시 값만 작성
+- 실행 방법: 의존성 설치와 로컬 실행 명령을 간단히 정리
+- 담당 범위: 해당 폴더가 맡는 기능과 주요 진입 파일 설명
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+보안 주의 사항
+--------------
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+GitHub에는 실제 비밀값이나 운영 정보를 올리지 않습니다.
 
-### `npm run eject`
+절대 커밋하지 않을 항목:
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+- API 키
+- OAuth 클라이언트 값
+- 세션/JWT 시크릿
+- 데이터베이스 계정 또는 접속 문자열
+- 운영 서버 주소, IP, 배포 명령
+- 개인 액세스 토큰
+- 실제 사용자 데이터 또는 업로드 문서
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+협업 및 Git 전략
+----------------
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+팀 프로젝트의 일관성을 유지하기 위해 아래 규칙을 따릅니다.
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+- `main`: 운영 또는 제출용 안정 브랜치
+- `develop`: 기능 통합 및 검증 브랜치
+- `feature/기능명`: 기능별 작업 브랜치
 
-## Learn More
+커밋 메시지는 작업 영역을 앞에 표시합니다.
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+```text
+[FE] 분석 화면 미리보기 개선
+[BE] 프로젝트 저장 API 수정
+[AI] 문서 분석 모델 프롬프트 개선
+```
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+PR을 만들 때는 최소 1명의 팀원이 리뷰한 뒤 `develop`에 병합합니다.
 
-### Code Splitting
+문서화 및 커뮤니케이션
+----------------------
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+- FigJam/Figma 워크플로우는 최신 상태로 유지합니다.
+- 외부에 공개해도 되는 링크만 README에 배치합니다.
+- 팀 전용 설계 링크는 접근 권한을 제한하고, 공개 저장소에는 민감한 세부 내용을 적지 않습니다.
+- 환경 설정 오류와 자주 묻는 질문은 `docs/` 또는 각 폴더 README의 Troubleshooting 섹션에 기록합니다.
 
-### Analyzing the Bundle Size
+Troubleshooting
+---------------
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+자주 발생하는 문제와 해결 방법은 팀 문서에 계속 누적합니다.
 
-### Making a Progressive Web App
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
-
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
-
-
-1. Install: npm install 또는 yarn install
-
-2. Scripts: 실행 방법 (npm start)
-
-3. Design Link: 피그마(Figma) 등 디자인 가이드 링크
+- 환경 변수 파일이 없는 경우 `.env.example`을 기준으로 로컬 전용 파일을 만듭니다.
+- 의존성 설치 오류가 나면 각 파트의 런타임 버전을 먼저 확인합니다.
+- 실행 중 오류가 반복되면 에러 메시지, 실행 위치, 사용한 브랜치를 함께 공유합니다.

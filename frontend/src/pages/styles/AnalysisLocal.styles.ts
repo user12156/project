@@ -15,13 +15,8 @@ export const MainLayout = styled.div`
 `;
 
 export const VisualPanel = styled.div`
-<<<<<<< HEAD
-  flex: 0 0 50%;
-  min-width: 300px;
-=======
   flex: 0 0 clamp(420px, 46%, 720px);
   min-width: 420px;
->>>>>>> 668b885c33dfb63e222feb660e03e2de50a9de10
   border-right: 1px solid #e2e8f0;
   padding: 12px;
   overflow: hidden;
@@ -38,11 +33,7 @@ export const VisualPanel = styled.div`
 
   .compare-shell {
     display: grid;
-<<<<<<< HEAD
-    grid-template-columns: 1fr;
-=======
     grid-template-columns: minmax(260px, var(--source-pane-width, 58%)) 10px minmax(220px, 1fr);
->>>>>>> 668b885c33dfb63e222feb660e03e2de50a9de10
     gap: 8px;
     min-height: 0;
     height: 100%;
@@ -314,10 +305,6 @@ export const VisualArtifact = styled.div`
       font-weight: 850;
     }
 
-<<<<<<< HEAD
-    span {
-      flex: 0 0 auto;
-=======
     .artifact-meta {
       flex: 0 0 auto;
       display: grid;
@@ -327,13 +314,10 @@ export const VisualArtifact = styled.div`
     }
 
     span {
->>>>>>> 668b885c33dfb63e222feb660e03e2de50a9de10
       color: #0ea5a4;
       font-size: 11px;
       font-weight: 850;
     }
-<<<<<<< HEAD
-=======
 
     time {
       color: #64748b;
@@ -341,7 +325,6 @@ export const VisualArtifact = styled.div`
       font-weight: 800;
       white-space: nowrap;
     }
->>>>>>> 668b885c33dfb63e222feb660e03e2de50a9de10
   }
 
   .artifact-body {

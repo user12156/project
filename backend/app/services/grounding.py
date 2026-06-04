@@ -188,10 +188,6 @@ def validate_grounding(
     unsupported_numbers = [
         value for value in _numbers(answer) if _compact(value) not in compact_evidence
     ]
-<<<<<<< HEAD
-    # AI의 자체적인 수치 계산(합계, 통계 등)을 허용하기 위해 차단(False) 로직을 제거하고, 기록만 남깁니다.
-    # 추후 UI에서 경고 문구용으로 활용 가능합니다.
-=======
     if unsupported_numbers:
         return GroundingResult(
             False,
@@ -199,7 +195,6 @@ def validate_grounding(
             unsupported_numbers=unsupported_numbers[:8],
             method="number",
         ).to_dict()
->>>>>>> 668b885c33dfb63e222feb660e03e2de50a9de10
 
     answer_terms = _terms(answer)
     if not answer_terms:
@@ -207,12 +202,6 @@ def validate_grounding(
 
     evidence_terms = _terms(evidence)
     unsupported_terms = sorted(answer_terms - evidence_terms)
-<<<<<<< HEAD
-    
-    # [CRITICAL FIX] 완전 무력화: 어휘 일치율(support_ratio) 검사를 완전히 해제합니다.
-    # 한국어 형태소 차이로 인해 GPT의 정상적인 답변이 억울하게 차단되는 현상을 방지합니다.
-    # 무조건 통과(True) 시켜 GPT의 똑똑한 요약본을 사용자에게 그대로 전달합니다.
-=======
     support_ratio = 1 - (len(unsupported_terms) / max(len(answer_terms), 1))
 
     if len(answer_terms) >= 12 and support_ratio < 0.35:
@@ -232,5 +221,4 @@ def validate_grounding(
             semantic_score=semantic_score,
         ).to_dict()
 
->>>>>>> 668b885c33dfb63e222feb660e03e2de50a9de10
     return GroundingResult(True).to_dict()

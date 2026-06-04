@@ -62,7 +62,9 @@ apiClient.interceptors.response.use(
       return Promise.reject(error);
     }
 
-    if (error.response?.status === 401 && !isAuthSubmitRequest) {
+    const skipGlobalAuthRedirect = Boolean((error.config as any)?._skipGlobalAuthRedirect);
+
+    if (error.response?.status === 401 && !isAuthSubmitRequest && !skipGlobalAuthRedirect) {
       // Only treat this as a global auth-expiry event when the failed request
       // actually included an Authorization header. This prevents unrelated
       // 401s (e.g. from third-party endpoints or misrouted requests without
@@ -110,8 +112,6 @@ export const authAPI = {
 };
 
 export const analysisAPI = {
-<<<<<<< HEAD
-=======
   previewDocument: (file: File) => {
     const formData = new FormData();
     formData.append('file', file, file.name || 'document');
@@ -121,7 +121,6 @@ export const analysisAPI = {
       responseType: 'blob',
     });
   },
->>>>>>> 668b885c33dfb63e222feb660e03e2de50a9de10
   chat: (question: string, files: File[], options: AnalysisChatOptions = {}, analysisText = '') => {
     const formData = new FormData();
     formData.append('question', question);
@@ -141,13 +140,9 @@ export const analysisAPI = {
     formData.append('question', question);
     if (analysisText) formData.append('analysis_text', analysisText);
 
-<<<<<<< HEAD
     return apiClient.post('/api/analysis/title', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
-=======
-    return apiClient.post('/api/analysis/title', formData);
->>>>>>> 668b885c33dfb63e222feb660e03e2de50a9de10
   },
   createVisual: (type: string, files: File[], analysisText = '', options: AnalysisChatOptions = {}) => {
     const formData = new FormData();
@@ -167,7 +162,8 @@ export const analysisAPI = {
 export const projectAPI = {
   list: () => apiClient.get('/api/projects'),
   sync: (projects: unknown[]) => apiClient.put('/api/projects/sync', { projects }),
-  save: (project: unknown) => apiClient.post('/api/projects', { project }),
+  save: (project: unknown) =>
+    apiClient.post('/api/projects', { project }, { _skipGlobalAuthRedirect: true } as any),
   delete: (projectId: string) => apiClient.delete(`/api/projects/${encodeURIComponent(projectId)}`),
   findByInviteCode: (inviteCode: string) => apiClient.get(`/api/projects/invite/${encodeURIComponent(inviteCode)}`),
 };

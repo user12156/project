@@ -1,137 +1,87 @@
-# PaperMate Backend
+PaperMate
+=========
 
-FastAPI로 만든 PaperMate 백엔드입니다. Docker 실행은 프로젝트 루트에서 합니다.
+PaperMate는 PDF, HWPX, DOCX, 이미지, TXT 문서를 업로드해 분석하고, 결과를 프로젝트로 저장해 협업할 수 있는 문서 분석 웹 애플리케이션입니다.
 
-## Docker 실행
+주요 기능
+---------
 
-Docker Desktop을 켠 뒤 프로젝트 루트에서 실행합니다.
+- 문서 업로드 및 분석
+- AI 기반 질의응답
+- 문서 원본 미리보기와 분석 결과 비교
+- 표, 그래프 등 시각화 자료 생성
+- 프로젝트 저장, 복원, 공유 워크플로우
 
-```bat
-copy .env.example .env
-copy backend\.env.example backend\.env
-docker compose up --build
-```
+프로젝트 폴더 구조
+------------------
 
-Google 로그인을 사용할 경우 루트 `.env`의 `VITE_GOOGLE_CLIENT_ID`와
-`backend\.env`의 `GOOGLE_CLIENT_ID`에 같은 OAuth Client ID를 입력합니다.
-
-브라우저는 아래 주소로 접속합니다.
-
-```text
-http://127.0.0.1:3000
-```
-
-백엔드 상태 확인 주소입니다.
+역할 분담과 협업을 위해 프로젝트를 모듈 단위로 관리합니다.
 
 ```text
-http://127.0.0.1:8000/api/health
-http://127.0.0.1:8000/api/ready
+frontend/   React 기반 사용자 인터페이스와 화면 구성 요소
+backend/    API 서버, 인증, 프로젝트 저장, 데이터 처리 로직
+docs/       워크플로우 다이어그램, 설계 문서, 회의 기록
 ```
 
-## 컨테이너 구성
+AI 문서 파싱과 질의응답 모델 처리는 현재 백엔드 서비스 모듈에서 관리하며, 필요하면 추후 `ai-service/`로 분리할 수 있습니다.
+
+파트별 환경 설정 가이드
+-----------------------
+
+각 폴더의 README 또는 문서에는 아래 내용을 정리합니다.
+
+- 필수 요구 사항: 사용하는 언어 버전, 런타임, 패키지 매니저
+- 환경 변수: 실제 값은 공유하지 않고 `.env.example`에 빈 값 또는 예시 값만 작성
+- 실행 방법: 의존성 설치와 로컬 실행 명령을 간단히 정리
+- 담당 범위: 해당 폴더가 맡는 기능과 주요 진입 파일 설명
+
+보안 주의 사항
+--------------
+
+GitHub에는 실제 비밀값이나 운영 정보를 올리지 않습니다.
+
+절대 커밋하지 않을 항목:
+
+- API 키
+- OAuth 클라이언트 값
+- 세션/JWT 시크릿
+- 데이터베이스 계정 또는 접속 문자열
+- 운영 서버 주소, IP, 배포 명령
+- 개인 액세스 토큰
+- 실제 사용자 데이터 또는 업로드 문서
+
+협업 및 Git 전략
+----------------
+
+팀 프로젝트의 일관성을 유지하기 위해 아래 규칙을 따릅니다.
+
+- `main`: 운영 또는 제출용 안정 브랜치
+- `develop`: 기능 통합 및 검증 브랜치
+- `feature/기능명`: 기능별 작업 브랜치
+
+커밋 메시지는 작업 영역을 앞에 표시합니다.
 
 ```text
-frontend  nginx로 React 빌드 파일 서빙, /api 요청을 backend로 프록시
-backend   FastAPI + Uvicorn
-mongo     MongoDB 7
+[FE] 분석 화면 미리보기 개선
+[BE] 프로젝트 저장 API 수정
+[AI] 문서 분석 모델 프롬프트 개선
 ```
 
-## 백엔드만 직접 실행
+PR을 만들 때는 최소 1명의 팀원이 리뷰한 뒤 `develop`에 병합합니다.
 
-Docker 없이 백엔드만 따로 확인할 때 사용합니다.
+문서화 및 커뮤니케이션
+----------------------
 
-```bat
-cd backend
-python -m venv venv
-venv\Scripts\activate
-pip install -r requirements.txt
-copy .env.example .env
-python -m uvicorn main:app --host 127.0.0.1 --port 8000 --reload
-```
+- FigJam/Figma 워크플로우는 최신 상태로 유지합니다.
+- 외부에 공개해도 되는 링크만 README에 배치합니다.
+- 팀 전용 설계 링크는 접근 권한을 제한하고, 공개 저장소에는 민감한 세부 내용을 적지 않습니다.
+- 환경 설정 오류와 자주 묻는 질문은 `docs/` 또는 각 폴더 README의 Troubleshooting 섹션에 기록합니다.
 
-## 기본 분석 엔진: BERT/Qwen Grounding
+Troubleshooting
+---------------
 
-기본 빌드에 sentence-transformers, transformers, accelerate가 포함됩니다. Grounding은 단어/숫자 검증과 질문-문장 의미 유사도 재정렬을 함께 사용합니다.
+자주 발생하는 문제와 해결 방법은 팀 문서에 계속 누적합니다.
 
-```env
-ENABLE_BERT_GROUNDING=true
-BERT_GROUNDING_MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
-BERT_GROUNDING_THRESHOLD=0.62
-BERT_GROUNDING_INSTRUCTION=Given an answer sentence, retrieve the most relevant source passage from the uploaded document.
-```
-
-모델을 불러오지 못하면 서버는 멈추지 않고 기존 단어 기반 grounding으로 돌아갑니다.
-
-더 강한 다국어 임베딩이 필요하고 GPU 메모리가 충분하면 Qwen3 임베딩 모델로 바꿀 수 있습니다.
-
-```env
-ENABLE_BERT_GROUNDING=true
-BERT_GROUNDING_MODEL=Qwen/Qwen3-Embedding-8B
-BERT_GROUNDING_THRESHOLD=0.62
-```
-
-`Qwen3-Embedding-8B`는 8B 모델이라 CPU나 일반 노트북에서는 매우 느리거나 메모리가 부족할 수 있습니다. 로컬 개발 기본값은 가벼운 MiniLM으로 두고, 서버/GPU 환경에서 Qwen으로 전환하는 방식을 권장합니다.
-
-## 기본 분석 엔진: KoBERTopic 스타일 주제 추출
-
-KoBERTopic은 BERTopic을 한국어에 적용하기 위해 Mecab 토크나이저와 다국어 SBERT를 조합한 예제입니다. PaperMate는 이 아이디어를 참고해 문서 분석 결과에 `[문서 주제 후보]`를 추가합니다.
-
-기본 빌드에 BERTopic과 scikit-learn이 포함됩니다.
-
-```env
-ENABLE_TOPIC_MODELING=true
-TOPIC_MODEL_BACKEND=bertopic
-TOPIC_MODEL_LIMIT=5
-```
-
-Windows나 작은 컨테이너에서 HDBSCAN/모델 로드가 실패할 수 있어, 실패 시 로컬 토큰 기반 주제 추출로 돌아갑니다.
-
-참고: https://github.com/ukairia777/KoBERTopic
-
-## LLM과 로컬 엔진의 관계
-
-LLM을 사용해도 BERT/Qwen grounding과 KoBERTopic은 사라지지 않습니다. 로컬 엔진은 문서에서 근거 문장과 주제 후보를 먼저 고르고, LLM은 그 근거를 바탕으로 자연어 답변을 만듭니다. LLM 답변 뒤에는 grounding 검증을 한 번 더 거쳐 문서에 없는 수치나 주장을 줄입니다.
-
-## 트리 구조
-
-```text
-backend/
-  main.py                  FastAPI 앱 시작 파일
-  requirements.txt         Python 패키지 목록
-  .env.example             환경변수 예시 파일
-  Dockerfile               백엔드 Docker 이미지 설정
-
-  app/
-    core/
-      config.py            환경변수와 서버 설정
-      database.py          MongoDB 연결과 인덱스
-      deps.py              로그인 사용자 확인
-      security.py          비밀번호 해시와 JWT 토큰
-      uploads.py           업로드 파일 개수/용량 검사
-
-    routers/
-      auth.py              회원가입, 로그인, 계정 관리
-      projects.py          프로젝트 저장, 조회, 삭제
-      analysis.py          문서 분석 Q&A
-      visuals.py           표, 그래프, 이미지, 마인드맵 생성
-      visual_assets.py     시각화 보관함 저장
-      shared_rooms.py      공유방 저장
-      discussion_comments.py 공유방 댓글 저장
-      project_threads.py   분석 대화 기록 저장
-      project_files.py     파일 메타데이터 저장
-
-    services/
-      document_analysis.py 문서 텍스트 추출과 기본 분석
-      grounding.py         문서 근거 검증과 BERT/Qwen 의미 유사도 검사
-      llm_analysis.py      OpenAI/Gemini 호출 연결부
-      topic_modeling.py    KoBERTopic 스타일 주제 후보 추출
-      visual_buttons/      시각화 버튼별 생성 로직
-
-  models/
-    schemas.py             API 요청/응답 데이터 모양
-```
-
-##변경 내용
-
-choi_v4와 kim_v1 머지 
-반영 내용은 주로 kim 쪽의 문서 분석/추천질문/시각화 프롬프트 보강, 분석 화면 소스 패널 리사이즈 UI입니다. v4의 FAQ, Google 로그인, 인증 관련 최신 구조는 유지했습니다. diff.txt, fix.py, prompt.txt 같은 kim 쪽 임시 산출물은 병합본에서 제외했습니다.
+- 환경 변수 파일이 없는 경우 `.env.example`을 기준으로 로컬 전용 파일을 만듭니다.
+- 의존성 설치 오류가 나면 각 파트의 런타임 버전을 먼저 확인합니다.
+- 실행 중 오류가 반복되면 에러 메시지, 실행 위치, 사용한 브랜치를 함께 공유합니다.

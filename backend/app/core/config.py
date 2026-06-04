@@ -164,8 +164,6 @@ def create_settings() -> Settings:
         hwp_parser_timeout_seconds=_env_int("HWP_PARSER_TIMEOUT_SECONDS", 30),
         openai_api_key=os.getenv("OPENAI_API_KEY", "").strip(),
         openai_model=os.getenv("OPENAI_MODEL", "gpt-4o-mini").strip(),
-        google_api_key=os.getenv("GOOGLE_API_KEY", "").strip(),
- kim_v3
         google_client_id=(os.getenv("GOOGLE_CLIENT_ID") or os.getenv("VITE_GOOGLE_CLIENT_ID", "")).strip(),
         enable_bert_grounding=_env_bool("ENABLE_BERT_GROUNDING", True),
         bert_grounding_model=os.getenv(

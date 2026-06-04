@@ -81,8 +81,6 @@ const sanitizeRoom = (room = fallbackRoom) => ({
   ),
 });
 
-<<<<<<< HEAD
-=======
 const createFreshProjectRoom = (project, inviteCode, baseRoom, username) => {
   const projectComments = asArray(project?.discussionComments);
   const projectCommentIds = new Set(projectComments.map((comment) => comment.id));
@@ -108,7 +106,6 @@ const createFreshProjectRoom = (project, inviteCode, baseRoom, username) => {
   };
 };
 
->>>>>>> 668b885c33dfb63e222feb660e03e2de50a9de10
 const formatTime = () => {
   const now = new Date();
   return `오늘 ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
@@ -116,8 +113,6 @@ const formatTime = () => {
 
 const formatDate = () => new Date().toLocaleDateString('ko-KR').replace(/. /g, '.').slice(0, -1);
 
-<<<<<<< HEAD
-=======
 const formatDateTime = (value) => {
   if (!value) return '';
   const text = String(value).trim();
@@ -146,7 +141,6 @@ const buildAssetTimestamp = (asset, project) => {
   return `${formattedDate} ${String(rawTime).replace(/^오늘\s*/, '')}`;
 };
 
->>>>>>> 668b885c33dfb63e222feb660e03e2de50a9de10
 // 화면에서 사용할 초대코드를 생성합니다.
 const createInviteCode = () => {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -323,10 +317,7 @@ function ShareC({ onRestoreTrigger, username = 'Guest', initialProject = null })
   const chatFeedRef = useRef(null);
   const assetStartRef = useRef(null);
   const shouldScrollToAssetsRef = useRef(false);
-<<<<<<< HEAD
-=======
   const skipLastRoomRestoreRef = useRef(false);
->>>>>>> 668b885c33dfb63e222feb660e03e2de50a9de10
 
   // 로컬 저장소에서 사용자의 프로젝트 목록을 불러옵니다.
   const loadOwnProjects = () => {
@@ -452,10 +443,7 @@ function ShareC({ onRestoreTrigger, username = 'Guest', initialProject = null })
       projectId: project.id,
       projectTitle: project.title,
       sourceType,
-<<<<<<< HEAD
-=======
       displayTimestamp: buildAssetTimestamp(image, project),
->>>>>>> 668b885c33dfb63e222feb660e03e2de50a9de10
     }));
 
     let lastQuestionText = '';
@@ -488,10 +476,7 @@ function ShareC({ onRestoreTrigger, username = 'Guest', initialProject = null })
           projectId: project.id,
           projectTitle: project.title,
           sourceType,
-<<<<<<< HEAD
-=======
           displayTimestamp: buildAssetTimestamp(mergedItem, project),
->>>>>>> 668b885c33dfb63e222feb660e03e2de50a9de10
         };
         return nextAsset.type === 'visual' ? coerceGraphAsset(nextAsset, promptText) : nextAsset;
       })
@@ -516,10 +501,7 @@ function ShareC({ onRestoreTrigger, username = 'Guest', initialProject = null })
         projectId: project.id,
         projectTitle: project.title,
         sourceType,
-<<<<<<< HEAD
-=======
         displayTimestamp: buildAssetTimestamp(visual, project),
->>>>>>> 668b885c33dfb63e222feb660e03e2de50a9de10
       }));
 
     return [...threadItems, ...orphanVisuals, ...images].filter(hasTimelineAssetContent);
@@ -633,13 +615,10 @@ function ShareC({ onRestoreTrigger, username = 'Guest', initialProject = null })
   useEffect(() => {
     setProjects(loadOwnProjects());
     setSharedProjects(loadSharedProjects());
-<<<<<<< HEAD
-=======
     if (skipLastRoomRestoreRef.current) {
       skipLastRoomRestoreRef.current = false;
       return;
     }
->>>>>>> 668b885c33dfb63e222feb660e03e2de50a9de10
     if (!activeShareCode) setRoom(loadLastRoom());
   }, [username, activeShareCode]);
 
@@ -648,27 +627,6 @@ function ShareC({ onRestoreTrigger, username = 'Guest', initialProject = null })
 
     const normalizedCode = initialProject.inviteCode;
     const sharedRoom = sanitizeRoom(readJson(getSharedRoomKey(normalizedCode), fallbackRoom));
-<<<<<<< HEAD
-    const nextIds = Array.from(new Set([
-      ...asArray(sharedRoom.loadedProjectIds),
-      initialProject.projectId,
-    ]));
-    const alreadyJoined = asArray(sharedRoom.members).some((member) => member.name === username);
-
-    setActiveShareCode(normalizedCode);
-    setSelectedProjectId(initialProject.projectId);
-    setRoom({
-      ...sharedRoom,
-      inviteCode: normalizedCode,
-      joinedCode: normalizedCode,
-      mainProjectId: initialProject.projectId,
-      loadedProjectIds: nextIds,
-      comments: asArray(sharedRoom.comments),
-      members: alreadyJoined ? asArray(sharedRoom.members) : [...asArray(sharedRoom.members), { id: Date.now(), name: username }],
-    });
-    setNotice(`"${initialProject.projectTitle || '공유 분석'}" 공유 토론방을 불러왔습니다.`);
-  }, [initialProject, username]);
-=======
     const matchedProject =
       allProjects.find((project) => project.id === initialProject.projectId) ||
       allProjects.find((project) => project.inviteCode === normalizedCode) ||
@@ -687,7 +645,6 @@ function ShareC({ onRestoreTrigger, username = 'Guest', initialProject = null })
     setSelectedVisualAsset(null);
     setNotice(`"${initialProject.projectTitle || '공유 분석'}" 공유 토론방을 불러왔습니다.`);
   }, [allProjects, initialProject, username]);
->>>>>>> 668b885c33dfb63e222feb660e03e2de50a9de10
 
   useEffect(() => {
     if (!chatFeedRef.current) return;
@@ -750,30 +707,6 @@ function ShareC({ onRestoreTrigger, username = 'Guest', initialProject = null })
     }
 
     const sharedRoom = sanitizeRoom(readJson(getSharedRoomKey(normalizedCode), fallbackRoom));
-<<<<<<< HEAD
-    const projectCommentIds = new Set(asArray(matchedProject.discussionComments).map((comment) => comment.id));
-    const mergedComments = [
-      ...asArray(matchedProject.discussionComments),
-      ...asArray(sharedRoom.comments).filter((comment) => !projectCommentIds.has(comment.id)),
-    ];
-    const nextIds = sharedRoom.loadedProjectIds.includes(matchedProject.id)
-      ? sharedRoom.loadedProjectIds
-      : [...sharedRoom.loadedProjectIds, matchedProject.id];
-    const alreadyJoined = asArray(sharedRoom.members).some((member) => member.name === username);
-
-    setActiveShareCode(normalizedCode);
-    setSelectedProjectId(matchedProject.id);
-    setRoom({
-      ...sharedRoom,
-      inviteCode: normalizedCode,
-      joinedCode: normalizedCode,
-      mainProjectId: matchedProject.id,
-      loadedProjectIds: nextIds,
-      comments: mergedComments,
-      members: alreadyJoined ? asArray(sharedRoom.members) : [...asArray(sharedRoom.members), { id: Date.now(), name: username }],
-    });
-    setNotice(`참여 완료: "${matchedProject.title}" 결과 토론방을 불러왔습니다.`);
-=======
     const nextRoom = createFreshProjectRoom(matchedProject, normalizedCode, sharedRoom, username);
 
     setActiveShareCode(normalizedCode);
@@ -795,7 +728,6 @@ function ShareC({ onRestoreTrigger, username = 'Guest', initialProject = null })
     setSelectedVisualAsset(null);
     setRoom({ ...fallbackRoom });
     setNotice('새 공유 페이지를 만들었습니다. 초대코드를 입력해 프로젝트를 불러오세요.');
->>>>>>> 668b885c33dfb63e222feb660e03e2de50a9de10
   };
 
   const loadSupportProjectByCode = () => {
@@ -1252,10 +1184,6 @@ function ShareC({ onRestoreTrigger, username = 'Guest', initialProject = null })
               <TimelineNode key={`${asset.id}-${index}`} $active={index === 0}>
                 <div className="dot"></div>
                 <div className="card">
-<<<<<<< HEAD
-                  <div className={`project-label ${asset.sourceType === 'support' ? 'support' : ''}`}>
-                    {asset.sourceType === 'support' ? '비교 프로젝트' : '메인 프로젝트'} · {asset.projectTitle}
-=======
                   <div className="asset-head">
                     <div className={`project-label ${asset.sourceType === 'support' ? 'support' : ''}`}>
                       {asset.sourceType === 'support' ? '비교 프로젝트' : '메인 프로젝트'} · {asset.projectTitle}
@@ -1265,7 +1193,6 @@ function ShareC({ onRestoreTrigger, username = 'Guest', initialProject = null })
                         {asset.displayTimestamp}
                       </time>
                     )}
->>>>>>> 668b885c33dfb63e222feb660e03e2de50a9de10
                   </div>
                   <h4>{asset.title}</h4>
                   {asset.type === 'question' && (
@@ -1305,11 +1232,7 @@ function ShareC({ onRestoreTrigger, username = 'Guest', initialProject = null })
                     </div>
                   )}
                   {asset.type !== 'visual' && renderAssetTable(asset.rows)}
-<<<<<<< HEAD
-                  {asset.uploadedBy && <div className="meta">{asset.uploadedBy} · {asset.time}</div>}
-=======
                   {asset.uploadedBy && <div className="meta">업로드 {asset.uploadedBy}</div>}
->>>>>>> 668b885c33dfb63e222feb660e03e2de50a9de10
                 </div>
               </TimelineNode>
             ))}
@@ -1318,13 +1241,10 @@ function ShareC({ onRestoreTrigger, username = 'Guest', initialProject = null })
       </MainTimelineContent>
 
       <RightCoopPanel $error={notice.includes('정확히')}>
-<<<<<<< HEAD
-=======
         <button className="new-share-page-btn" type="button" onClick={handleCreateNewSharePage}>
           <i className="fa-solid fa-plus"></i>
           새로운 공유 페이지 만들기
         </button>
->>>>>>> 668b885c33dfb63e222feb660e03e2de50a9de10
         <div className="invite-help">초대코드로 프로젝트를 불러옵니다</div>
         <div className="code-row top-code">
           <div className="code-label">초대코드</div>
