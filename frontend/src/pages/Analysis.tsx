@@ -48,9 +48,7 @@ const createInviteCode = () => {
 
 const formatDate = () => new Date().toLocaleDateString('ko-KR').replace(/. /g, '.').slice(0, -1);
 const getFileKey = (file) => `${file.name}-${file.size}-${file.lastModified || 0}`;
-const isUploadableFile = (file) =>
-  (typeof File !== 'undefined' && file instanceof File) ||
-  (typeof Blob !== 'undefined' && file instanceof Blob);
+const isUploadableFile = (file) => typeof File !== 'undefined' && file instanceof File;
 
 const toStoredFiles = (files) =>
   files.map((file) => ({

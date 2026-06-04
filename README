@@ -1,5 +1,4 @@
 PaperMate
-=========
 
 변경사항 
 문서 추출 방법 변경 kobertopic 추가 EDA 작성
@@ -20,13 +19,12 @@ docker compose up --build
 http://127.0.0.1:3000
 ```
 
-백엔드 상태 확인 주소입니다.
+--------- v1 브랜치 변경점 
+ 메인 머지 상태에서 배포전 좀더 빠르고 원한할 api를 위해
+routers 폴더에 files,threads,visuals,discussion_comments.py 을 별도로 pydantic 모델로 고정하는 작업을 하였습니다.
 
-```text
-http://127.0.0.1:8000/api/health
-http://127.0.0.1:8000/api/ready
-```
 
+=========
 컨테이너 구성
 ------------
 
@@ -66,25 +64,4 @@ backend/app/services/     문서 분석, LLM 연결, 시각화 생성 로직
 backend/models/           API 요청/응답 스키마
 ```
 
-개발용 직접 실행
----------------
 
-Docker 없이 따로 실행할 때만 사용합니다.
-
-프론트엔드:
-
-```bat
-cd frontend
-npm install
-npm run dev
-```
-
-백엔드:
-
-```bat
-cd backend
-python -m venv venv
-venv\Scripts\activate
-pip install -r requirements.txt
-python -m uvicorn main:app --host 127.0.0.1 --port 8000 --reload
-```

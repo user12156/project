@@ -337,24 +337,15 @@ async def analyze_chat(
     llm_key_received = llm_key_source != "none"
 
     if not has_grounded_docs:
-        if files:
-            file_names = ", ".join(f.filename for f in files)
-            no_context_answer = (
-                f"업로드하신 파일({file_names})에서 텍스트를 추출할 수 없습니다.\n\n"
-                "[확인 요청]\n"
-                "- 텍스트가 포함되지 않은 스캔본(이미지)이거나, 아직 지원되지 않는 형식일 수 있습니다.\n"
-                "- 텍스트 복사가 가능한 PDF나 TXT, CSV 등을 업로드해주세요."
-            )
-        else:
-            no_context_answer = (
-                f"{_assistant_intro(question, fallback_answer.get('intent'))}\n\n"
-                "현재 분석할 문서 본문이 없습니다.\n\n"
-                "[필요한 자료]\n"
-                "- 질문에 맞는 PDF, HWPX, HWP, TXT, CSV, 이미지 OCR 자료를 먼저 업로드해주세요.\n"
-                "- \"40대 여성 이동 동향\" 같은 질문은 연령, 성별, 지역, 기간이 포함된 원본 표나 문서가 있어야 근거 기반으로 답할 수 있습니다.\n\n"
-                "[가능한 작업]\n"
-                "- 문서를 업로드하면 핵심 요약, 중요 문장 발췌, 수치 후보, 표/그래프 생성을 진행합니다."
-            )
+        no_context_answer = (
+            f"{_assistant_intro(question, fallback_answer.get('intent'))}\n\n"
+            "현재 분석할 문서 본문이 없습니다.\n\n"
+            "[필요한 자료]\n"
+            "- 질문에 맞는 PDF, HWPX, HWP, TXT, CSV, 이미지 OCR 자료를 먼저 업로드해주세요.\n"
+            "- \"40대 여성 이동 동향\" 같은 질문은 연령, 성별, 지역, 기간이 포함된 원본 표나 문서가 있어야 근거 기반으로 답할 수 있습니다.\n\n"
+            "[가능한 작업]\n"
+            "- 문서를 업로드하면 핵심 요약, 중요 문장 발췌, 수치 후보, 표/그래프 생성을 진행합니다."
+        )
         return {
             **fallback_answer,
             "answer": no_context_answer,
