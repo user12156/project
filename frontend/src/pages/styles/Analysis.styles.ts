@@ -183,6 +183,21 @@ export const TopMenuBar = styled.div`
       &:hover { background: #f8fafc; color: #1e293b; border-color: #94a3b8; }
     } 
 
+    .icon-action {
+      width: 36px;
+      height: 36px;
+      padding: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 36px;
+
+      svg {
+        width: 17px;
+        height: 17px;
+      }
+    }
+
     .danger {
       border-color: #e74c3c;
       color: #e74c3c;
@@ -201,6 +216,11 @@ export const TopMenuBar = styled.div`
       button {
         flex: 1;
         min-width: 120px;
+      }
+
+      .icon-action {
+        flex: 0 0 36px;
+        min-width: 36px;
       }
 
     }
@@ -618,6 +638,7 @@ export const BottomPromptInput = styled.div`
     border: 2px solid #e2e8f0;          /* 💡 채팅창과 똑같은 2px 선명한 경계선으로 수정 */
     border-radius: 14px; padding: 6px 18px;
     transition: border-color 0.15s;
+    position: relative;
     
     &:focus-within { border-color: #64748b; } /* 💡 마우스 클릭 시 테두리 색상 부드럽게 점등 */
     
@@ -638,10 +659,15 @@ export const BottomPromptInput = styled.div`
       cursor: pointer;
     }
 
+    .clip-menu-wrap {
+      position: relative;
+      flex: 0 0 auto;
+      margin-right: 8px;
+    }
+
     .clip-upload {
       width: 34px;
       height: 34px;
-      margin-right: 8px;
       border-radius: 9px;
       color: #64748b;
       flex: 0 0 auto;
@@ -650,6 +676,79 @@ export const BottomPromptInput = styled.div`
         background: #f1f5f9;
         color: #0ea5a4;
       }
+
+      &.active {
+        background: #f1f5f9;
+        color: #0f766e;
+      }
+
+      svg {
+        width: 19px;
+        height: 19px;
+        transition: transform 0.22s ease;
+      }
+
+      &.active svg {
+        transform: rotate(180deg);
+      }
+    }
+
+    .clip-action-menu {
+      position: absolute;
+      left: 0;
+      bottom: calc(100% + 14px);
+      z-index: 40;
+      width: 236px;
+      padding: 10px;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      background: #ffffff;
+      box-shadow: 0 20px 44px rgba(15, 23, 42, 0.16);
+      display: grid;
+      gap: 4px;
+    }
+
+    .clip-action-menu button {
+      width: 100%;
+      min-height: 42px;
+      padding: 0 10px;
+      border-radius: 8px;
+      color: #1f2937;
+      display: flex;
+      justify-content: flex-start;
+      gap: 12px;
+      font-size: 13px;
+      font-weight: 750;
+
+      &:hover {
+        background: #f8fafc;
+        color: #0f766e;
+      }
+    }
+
+    .clip-action-menu .primary-action {
+      min-height: 44px;
+      font-size: 15px;
+    }
+
+    .clip-menu-divider {
+      height: 1px;
+      margin: 6px 2px;
+      background: #e2e8f0;
+    }
+
+    .clip-action-menu svg {
+      width: 19px;
+      height: 19px;
+      color: currentColor;
+      flex: 0 0 auto;
+    }
+
+    .clip-action-menu span {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     i { 
@@ -669,6 +768,10 @@ export const BottomPromptInput = styled.div`
     .input-wrapper {
       border-radius: 12px;
       padding: 6px 12px;
+    }
+
+    .input-wrapper .clip-action-menu {
+      width: min(236px, calc(100vw - 42px));
     }
   }
 `;

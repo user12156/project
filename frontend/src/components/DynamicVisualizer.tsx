@@ -84,6 +84,7 @@ export const DynamicVisualizer = ({ config, fallbackTitle }: { config: any, fall
   }
 
   const { type, chartType, xAxisKey, columns, series, data, rows, kind } = parsed;
+  const layout = parsed.layout || {};
   
   // 구버전(rows, kind) 호환성 유지
   const safeData = Array.isArray(data) && data.length > 0 ? data : (Array.isArray(rows) ? rows : []);
@@ -105,7 +106,7 @@ export const DynamicVisualizer = ({ config, fallbackTitle }: { config: any, fall
     const borderColor = theme.borderColor || '#cbd5e1';
 
     return (
-      <div style={{ width: '100%', overflowX: 'auto' }}>
+      <div style={{ width: '100%', height: '100%', overflowX: 'auto', overflowY: 'auto' }}>
         <table
           className="dynamic-table"
           style={{
@@ -282,7 +283,15 @@ export const DynamicVisualizer = ({ config, fallbackTitle }: { config: any, fall
   };
 
   return (
-    <div className="dynamic-visualizer" style={{ width: '100%', padding: '16px 0 24px 0', minHeight: '340px' }}>
+    <div
+      className="dynamic-visualizer"
+      style={{
+        width: '100%',
+        padding: '16px 0 24px 0',
+        minHeight: layout.aspectRatio ? 'auto' : '340px',
+        aspectRatio: layout.aspectRatio,
+      }}
+    >
       {actualType === 'chart' && renderChart()}
       {actualType === 'table' && renderTable()}
       {!['chart', 'table'].includes(actualType) && renderTable()}

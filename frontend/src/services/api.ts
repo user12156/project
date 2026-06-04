@@ -5,8 +5,8 @@
 import axios from 'axios';
 
 interface AnalysisChatOptions {
-  provider?: string;
   conversationId?: string;
+  openaiApiKey?: string;
 }
 
 const isBrowserFile = (file: unknown): file is File | Blob =>
@@ -126,7 +126,6 @@ export const analysisAPI = {
     const formData = new FormData();
     formData.append('question', question);
     if (options.conversationId) formData.append('conversation_id', options.conversationId);
-    formData.append('llm_provider', options.provider || 'openai');
     if (analysisText) formData.append('analysis_text', analysisText);
     files.filter(isBrowserFile).forEach((file) => {
       const filename = file instanceof File ? file.name : 'upload-file';
@@ -140,7 +139,6 @@ export const analysisAPI = {
   generateChatTitle: (question: string, options: AnalysisChatOptions = {}, analysisText = '') => {
     const formData = new FormData();
     formData.append('question', question);
-    formData.append('llm_provider', options.provider || 'openai');
     if (analysisText) formData.append('analysis_text', analysisText);
 
 <<<<<<< HEAD
@@ -151,9 +149,10 @@ export const analysisAPI = {
     return apiClient.post('/api/analysis/title', formData);
 >>>>>>> 668b885c33dfb63e222feb660e03e2de50a9de10
   },
-  createVisual: (type: string, files: File[], analysisText = '') => {
+  createVisual: (type: string, files: File[], analysisText = '', options: AnalysisChatOptions = {}) => {
     const formData = new FormData();
     formData.append('analysis_text', analysisText);
+    if (options.openaiApiKey) formData.append('openai_api_key', options.openaiApiKey);
     files.filter(isBrowserFile).forEach((file) => {
       const filename = file instanceof File ? file.name : 'upload-file';
       formData.append('files', file, filename);

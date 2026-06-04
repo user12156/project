@@ -28,6 +28,7 @@ services:
       ENABLE_TOPIC_MODELING: "true"
 >>>>>>> 668b885c33dfb63e222feb660e03e2de50a9de10
       TOPIC_MODEL_BACKEND: "bertopic"
+      VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-}
     ports:
       - "8000:8000"
     depends_on:
@@ -43,6 +44,9 @@ services:
     build:
       context: .
       dockerfile: frontend/Dockerfile
+      args:
+        VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-}
+        VITE_GOOGLE_ALLOWED_ORIGINS: ${VITE_GOOGLE_ALLOWED_ORIGINS:-}
     restart: unless-stopped
     ports:
       - "3000:80"

@@ -76,21 +76,23 @@ const SocialButtons = ({
   mode,
   googleButtonRef,
   googleClientId,
+  googleUnavailableMessage,
 }: {
   mode: 'login' | 'signup';
   googleButtonRef: RefObject<HTMLDivElement>;
   googleClientId: string;
+  googleUnavailableMessage?: string;
 }) => {
   const isSignup = mode === 'signup';
 
   return (
     <div className="social-stack">
-      {googleClientId ? (
+      {googleClientId && !googleUnavailableMessage ? (
         <div className="google-signin-slot" ref={googleButtonRef} aria-label="Google 연동" />
       ) : (
         <button className="social-btn google" type="button" disabled aria-label="Google 연동">
           <FcGoogle />
-          <span>{googleClientId ? 'Google 출처 등록 필요' : 'Google Client ID 필요'}</span>
+          <span>{googleUnavailableMessage || 'Google Client ID 필요'}</span>
         </button>
       )}
       <button className="social-btn kakao" type="button" aria-label="카카오톡 연동">
@@ -122,10 +124,20 @@ function AuthModal({
   const googleAllowedOrigins = getAllowedGoogleOrigins();
   const googleOriginAllowed =
     typeof window === 'undefined' || googleAllowedOrigins.includes(window.location.origin);
+  const googleUnavailableMessage = !googleClientId
+    ? 'Google Client ID 필요'
+    : !googleOriginAllowed
+      ? 'Google 허용 출처 확인 필요'
+      : '';
 
   useEffect(() => {
-    if ((modalMode !== 'login' && modalMode !== 'signup') || !googleClientId) return;
+    if (modalMode !== 'login' && modalMode !== 'signup') return;
+    if (!googleClientId) {
+      onGoogleError('Google Client ID가 프론트 빌드에 설정되지 않았습니다.');
+      return;
+    }
     if (!googleOriginAllowed) {
+      onGoogleError(`현재 주소(${window.location.origin})가 Google 로그인 허용 출처에 없습니다.`);
       return;
     }
 
@@ -152,6 +164,7 @@ function AuthModal({
         });
       })
       .catch(() => {
+        onGoogleError('Google 로그인 스크립트를 불러오지 못했습니다.');
         if (googleButtonRef.current) {
           googleButtonRef.current.textContent = 'Google 로그인 버튼을 불러오지 못했습니다.';
         }
@@ -208,6 +221,7 @@ function AuthModal({
             mode={modalMode === 'signup' ? 'signup' : 'login'}
             googleButtonRef={googleButtonRef}
             googleClientId={googleClientId}
+            googleUnavailableMessage={googleUnavailableMessage}
           />
           <div className="divider">{modalMode === 'login' ? '또는' : '또는 일반 가입'}</div>
 

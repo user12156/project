@@ -116,6 +116,7 @@ function Home() {
   const [analysisSessionKey, setAnalysisSessionKey] = useState(
     () => `analysis-${Date.now()}`,
   );
+  const [newAnalysisSignal, setNewAnalysisSignal] = useState(0);
 
   const navigateToView = (nextView: string, options: NavigateOptions = {}) => {
     const {
@@ -210,7 +211,9 @@ function Home() {
     else if (menuName === VIEW.MYPAGE || menuName === "프로필")
       navigateToView(VIEW.MYPAGE);
     else if (menuName === "새 채팅") {
-      setAnalysisSessionKey(`analysis-${Date.now()}`);
+      sessionStorage.setItem("papermate.skipActiveAnalysisRestore", "1");
+      setNewAnalysisSignal((prev) => prev + 1);
+      setAnalysisSessionKey(`analysis-new-${Date.now()}-${Math.random()}`);
       navigateToView(VIEW.ANALYSIS, { clearRestoredData: true });
     }
   };
@@ -607,6 +610,11 @@ function Home() {
         )}
         {viewMode === VIEW.SHARE && (
           <ShareC
+            key={
+              shareOpenData?.projectId || shareOpenData?.inviteCode
+                ? `share-${shareOpenData?.projectId || shareOpenData?.inviteCode}`
+                : "share-new"
+            }
             onRestoreTrigger={handleTimelineRestoreJump}
             username={user?.username}
             initialProject={shareOpenData}
@@ -616,6 +624,7 @@ function Home() {
           <AnalysisC
             key={analysisSessionKey}
             restoredData={restoredData}
+            newAnalysisSignal={newAnalysisSignal}
             clearRestore={() => setRestoredData(null)}
             onConversationChange={handleConversationChange}
             onLoginRequired={() => setModalMode("recommend")}

@@ -105,9 +105,7 @@ async def preview_document(file: UploadFile = File(...)):
 async def analyze_chat(
     question: str = Form(""),
     conversation_id: str = Form(""),
-    llm_provider: str = Form("openai"),
     openai_api_key: str = Form(""),
-    google_api_key: str = Form(""),
     files: list[UploadFile] = File(default=[]),
     analysis_text: str = Form(""),
 ):
@@ -160,27 +158,20 @@ async def analyze_chat(
         extracted_docs=extracted_docs,
         uploaded_filenames=[upload.filename or "unknown" for upload in files],
         openai_api_key=openai_api_key.strip() or None,
-        google_api_key=google_api_key.strip() or None,
         analysis_text=analysis_text,
     )
 
 @router.post("/title")
 async def generate_title(
     question: str = Form(""),
-    llm_provider: str = Form("openai"),
     openai_api_key: str = Form(""),
-    google_api_key: str = Form(""),
     analysis_text: str = Form("")
 ):
-    selected_provider = "openai"
-    
     from ..services.llm_analysis import generate_chat_title
     
     title = generate_chat_title(
         question,
-        provider=selected_provider,
         openai_api_key=openai_api_key.strip() or None,
-        google_api_key=google_api_key.strip() or None,
         analysis_text=analysis_text.strip()
     )
     

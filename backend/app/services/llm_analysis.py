@@ -525,60 +525,13 @@ def _analyze_with_openai(
     }
 
 
-def _analyze_with_google(
-    question: str,
-    extracted_docs: list[dict],
-    api_key: str,
-    analysis_text: str = "",
-    relevant_chunks: list[dict] | None = None,
-) -> dict:
-    try:
-        from google import genai
-    except ModuleNotFoundError:
-        return _llm_error("google-genai 패키지가 설치되어 있지 않습니다.", "google")
-
-    model = settings.gemini_model
-    system_prompt, user_prompt = _build_prompts(question, extracted_docs, analysis_text, relevant_chunks)
-    prompt = f"{system_prompt}\n\n{user_prompt}"
-
-    try:
-        client = genai.Client(api_key=api_key)
-        response = client.models.generate_content(model=model, contents=prompt)
-        answer = (getattr(response, "text", "") or "").strip()
-    except Exception as exc:
-        return _llm_error(f"Gemini 호출 실패: {exc}", "google", model)
-
-    if not answer:
-        return _llm_error("Gemini가 빈 답변을 반환했습니다.", "google", model)
-
-    main_answer, questions = _parse_suggested_questions(answer)
-
-    return {
-        "answer": main_answer,
-        "suggested_questions": questions,
-        "llm_used": True,
-        "model": model,
-        "provider": "google",
-    }
-
-
 def analyze_with_llm(
     question: str,
     extracted_docs: list[dict],
-    provider: str = "openai",
     openai_api_key: str | None = None,
-    google_api_key: str | None = None,
     analysis_text: str = "",
     relevant_chunks: list[dict] | None = None,
 ) -> dict:
-    normalized_provider = (provider or "openai").lower()
-
-    if normalized_provider == "google":
-        api_key = google_api_key or settings.google_api_key or settings.gemini_api_key
-        if not api_key:
-            return _llm_error("Google/Gemini API 키가 없어 기본 문서 추출로 응답했습니다.", "google")
-        return _analyze_with_google(question, extracted_docs, api_key, analysis_text, relevant_chunks)
-
     api_key = openai_api_key or settings.openai_api_key
     if not api_key:
         return _llm_error("OpenAI API 키가 없어 기본 문서 추출로 응답했습니다.", "openai")
@@ -587,28 +540,11 @@ def analyze_with_llm(
 
 def generate_chat_title(
     question: str,
-    provider: str = "openai",
     openai_api_key: str | None = None,
-    google_api_key: str | None = None,
     analysis_text: str = ""
 ) -> str:
     """사용자의 첫 질문을 바탕으로 3~5단어의 짧은 제목을 생성합니다."""
     prompt = f"다음 질문(또는 분석 요청)을 바탕으로 대화방의 제목을 3~5단어 내외의 짧은 명사형으로 작성해.\n\n질문: {question}\n\n오직 제목만 출력할 것."
-    
-    normalized_provider = (provider or "openai").lower()
-
-    if normalized_provider == "google":
-        api_key = google_api_key or os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
-        if not api_key:
-            return question[:20]
-        try:
-            from google import genai
-            client = genai.Client(api_key=api_key)
-            model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
-            response = client.models.generate_content(model=model, contents=prompt)
-            return (getattr(response, "text", "") or "").strip().replace('"', '').replace("'", "")
-        except Exception:
-            return question[:20]
 
     api_key = openai_api_key or os.getenv("OPENAI_API_KEY")
     if not api_key:

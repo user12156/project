@@ -37,9 +37,13 @@ PDF, HWPX, DOCX, 이미지, TXT 문서를 업로드해 분석하고 프로젝트
 팀원은 Docker Desktop을 켠 뒤 프로젝트 루트에서 아래 명령을 실행합니다.
 
 ```bat
+copy .env.example .env
 copy backend\.env.example backend\.env
 docker compose up --build
 ```
+
+Google 로그인을 사용할 경우 루트 `.env`의 `VITE_GOOGLE_CLIENT_ID`와
+`backend\.env`의 `GOOGLE_CLIENT_ID`에 같은 OAuth Client ID를 입력합니다.
 
 브라우저 접속 주소입니다.
 

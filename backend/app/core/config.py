@@ -106,10 +106,7 @@ class Settings:
     hwp_parser_timeout_seconds: int
     openai_api_key: str
     openai_model: str
-    google_api_key: str
     google_client_id: str
-    gemini_api_key: str
-    gemini_model: str
     enable_bert_grounding: bool
     bert_grounding_model: str
     bert_grounding_threshold: float
@@ -166,15 +163,10 @@ def create_settings() -> Settings:
         java_bin=os.getenv("JAVA_BIN", "java").strip() or "java",
         hwp_parser_timeout_seconds=_env_int("HWP_PARSER_TIMEOUT_SECONDS", 30),
         openai_api_key=os.getenv("OPENAI_API_KEY", "").strip(),
-<<<<<<< HEAD
         openai_model=os.getenv("OPENAI_MODEL", "gpt-4o-mini").strip(),
-=======
-        openai_model=os.getenv("OPENAI_MODEL", "gpt-4.1-mini").strip(),
->>>>>>> 668b885c33dfb63e222feb660e03e2de50a9de10
         google_api_key=os.getenv("GOOGLE_API_KEY", "").strip(),
+ kim_v3
         google_client_id=(os.getenv("GOOGLE_CLIENT_ID") or os.getenv("VITE_GOOGLE_CLIENT_ID", "")).strip(),
-        gemini_api_key=os.getenv("GEMINI_API_KEY", "").strip(),
-        gemini_model=os.getenv("GEMINI_MODEL", "gemini-2.0-flash").strip(),
         enable_bert_grounding=_env_bool("ENABLE_BERT_GROUNDING", True),
         bert_grounding_model=os.getenv(
             "BERT_GROUNDING_MODEL",

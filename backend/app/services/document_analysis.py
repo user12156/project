@@ -844,8 +844,52 @@ def _clean_hwpx_block(text: str) -> str:
     cleaned = _clean_text(text)
     cleaned = re.sub(r"\b(?:charpridref|parapridref|styleidref|borderfillidref)\b\s*\d*", " ", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\b(?:instid|zorder|numberingtype|textwrap|lock)\b\s*[:=]?\s*[A-Za-z0-9_-]+", " ", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"(?:\[그림\]\s*){2,}", "[그림] ", cleaned)
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
     return cleaned
+
+
+def _is_hwpx_noise_block(text: str) -> bool:
+    compact = re.sub(r"\s+", " ", str(text or "")).strip()
+    if not compact:
+        return True
+
+    lower = compact.lower()
+    noise_patterns = [
+        "원본 그림의 이름",
+        "그림 크기",
+        "내려 주기",
+        "위로",
+        "아래로",
+        "오른쪽",
+        "왼쪽",
+        "image",
+        "ole",
+        "adobe photoshop",
+    ]
+    if any(pattern in lower for pattern in noise_patterns):
+        return True
+    if compact == "[그림]":
+        return True
+    if re.fullmatch(r"[\[\]그림\s]+", compact):
+        return True
+    return False
+
+
+def _split_hwpx_sentences(block: str) -> list[str]:
+    text = _clean_hwpx_block(block)
+    if not text:
+        return []
+
+    text = re.sub(r"\s+(?=(?:○|※|\[[^\]]+\]|출처|자료|주기|주석)\b)", "\n", text)
+    text = re.sub(r"(?<=[.!?])\s+(?=[가-힣A-Z0-9\"'(\[])", "\n", text)
+    text = re.sub(r"(?<=(?:다|요|함|음|됨|임)\.)\s+(?=[가-힣A-Z0-9\"'(\[])", "\n", text)
+
+    parts = [part.strip() for part in text.splitlines() if part.strip()]
+    if len(parts) <= 1 and len(text) > 320:
+        parts = re.split(r"(?<=\))\s+(?=[가-힣A-Z0-9])|(?<=\.)\s+(?=[가-힣A-Z0-9])", text)
+
+    return [part.strip() for part in parts if part.strip()]
 
 
 def _node_text(node) -> str:
@@ -939,14 +983,16 @@ def _parse_hwpx_body_xml(raw: bytes) -> list[str]:
     cleaned_blocks: list[str] = []
     seen = set()
     for block in blocks:
-        block = block.strip()
-        compact = re.sub(r"\s+", "", block)
-        if not block or compact in seen:
-            continue
-        if len(compact) <= 1:
-            continue
-        seen.add(compact)
-        cleaned_blocks.append(block)
+        for part in _split_hwpx_sentences(block):
+            if _is_hwpx_noise_block(part):
+                continue
+            compact = re.sub(r"\s+", "", part)
+            if not part or compact in seen:
+                continue
+            if len(compact) <= 1:
+                continue
+            seen.add(compact)
+            cleaned_blocks.append(part)
     return cleaned_blocks
 
 

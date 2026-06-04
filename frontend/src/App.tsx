@@ -12,17 +12,25 @@ interface AppErrorBoundaryProps {
 
 interface AppErrorBoundaryState {
   error: Error | null;
+  resetKey: number;
 }
 
 class AppErrorBoundary extends React.Component<AppErrorBoundaryProps, AppErrorBoundaryState> {
   constructor(props: AppErrorBoundaryProps) {
     super(props);
-    this.state = { error: null };
+    this.state = { error: null, resetKey: 0 };
   }
 
   static getDerivedStateFromError(error: Error): AppErrorBoundaryState {
-    return { error };
+    return { error, resetKey: 0 };
   }
+
+  handleScreenRefresh = () => {
+    this.setState((prev) => ({
+      error: null,
+      resetKey: prev.resetKey + 1,
+    }));
+  };
 
   render() {
     if (this.state.error) {
@@ -33,14 +41,14 @@ class AppErrorBoundary extends React.Component<AppErrorBoundaryProps, AppErrorBo
           <pre style={{ whiteSpace: 'pre-wrap', color: '#dc2626' }}>
             {this.state.error.message}
           </pre>
-          <button type="button" onClick={() => window.location.reload()}>
+          <button type="button" onClick={this.handleScreenRefresh}>
             다시 불러오기
           </button>
         </div>
       );
     }
 
-    return this.props.children;
+    return <React.Fragment key={this.state.resetKey}>{this.props.children}</React.Fragment>;
   }
 }
 
