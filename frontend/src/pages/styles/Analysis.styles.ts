@@ -273,9 +273,137 @@ export const InviteCodeBadge = styled.div`
 export const StreamMessageArea = styled.div`
   flex: 1; padding: 40px 60px;          /* 💡 좌우 여백을 60px로 넓혀서 논문 읽을 때 시야가 답답하지 않게 가로폭 확장 */
   overflow-y: auto; display: flex; flex-direction: column; gap: 28px;
+  position: relative;
+
+  .message-anchor {
+    scroll-margin: 96px;
+  }
+
+  .question-timeline {
+    position: fixed;
+    top: 50%;
+    right: 18px;
+    transform: translateY(-50%);
+    width: 34px;
+    max-height: min(360px, calc(100vh - 260px));
+    padding: 8px 5px;
+    border: 1px solid transparent;
+    border-radius: 14px;
+    background: transparent;
+    box-shadow: none;
+    backdrop-filter: blur(10px);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    z-index: 60;
+    transition: width 0.18s ease, padding 0.18s ease, border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+  }
+
+  .question-timeline:hover,
+  .question-timeline:focus-within {
+    width: 300px;
+    padding: 10px;
+    border-color: #e2e8f0;
+    background: rgba(255, 255, 255, 0.96);
+    box-shadow: 0 16px 38px rgba(15, 23, 42, 0.18);
+    overflow-y: auto;
+  }
+
+  .question-timeline button {
+    width: 100%;
+    min-width: 0;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    color: #475569;
+    padding: 0;
+    min-height: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+
+  .question-timeline button::before {
+    content: "";
+    width: 24px;
+    height: 3px;
+    border-radius: 999px;
+    background: #cbd5e1;
+    transition: background 0.15s ease, width 0.15s ease;
+  }
+
+  .question-timeline button:hover::before {
+    width: 28px;
+    background: #0f172a;
+  }
+
+  .question-timeline:hover button,
+  .question-timeline:focus-within button {
+    min-height: 38px;
+    padding: 9px 10px;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    justify-content: stretch;
+    gap: 8px;
+    text-align: left;
+  }
+
+  .question-timeline:hover button::before,
+  .question-timeline:focus-within button::before {
+    display: none;
+  }
+
+  .question-timeline button:hover {
+    background: #f1f5f9;
+    color: #0f172a;
+  }
+
+  .question-timeline span {
+    display: none;
+    color: #0ea5a4;
+    font-size: 11px;
+    font-weight: 900;
+  }
+
+  .question-timeline strong {
+    display: none;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: inherit;
+    font-size: 12.5px;
+    font-weight: 750;
+  }
+
+  .question-timeline:hover span,
+  .question-timeline:hover strong,
+  .question-timeline:focus-within span,
+  .question-timeline:focus-within strong {
+    display: block;
+  }
 
   @media (max-width: 900px) {
     padding: 28px 32px;
+
+    .question-timeline {
+      top: auto;
+      right: 18px;
+      bottom: 92px;
+      transform: none;
+      width: 34px;
+      max-height: min(260px, calc(100vh - 180px));
+      display: flex;
+      overflow: hidden;
+    }
+
+    .question-timeline:hover,
+    .question-timeline:focus-within {
+      width: min(300px, calc(100vw - 36px));
+      overflow-y: auto;
+    }
   }
 
   @media (max-width: 560px) {
@@ -595,9 +723,12 @@ export const BottomPromptInput = styled.div`
     box-shadow: 0 3px 10px rgba(15, 23, 42, 0.04);
   }
 
-  .file-island > i {
+  .file-island > i,
+  .file-island > svg {
     color: #0ea5a4;
     font-size: 13px;
+    width: 14px;
+    height: 14px;
     flex: 0 0 auto;
   }
 

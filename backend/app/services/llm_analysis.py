@@ -6,7 +6,7 @@ import os
 import re
 
 from app.core.config import settings
-from app.services.chart import process_chart_response
+from app.services.visual_buttons.graph_visual import process_chart_response
 
 
 MAX_CONTEXT_CHARS = 400000

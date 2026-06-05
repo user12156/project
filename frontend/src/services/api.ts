@@ -25,6 +25,10 @@ const getApiBaseUrl = () => {
 };
 
 const API_BASE_URL = getApiBaseUrl();
+const LOCAL_DEV_TOKEN_PREFIX = 'local-dev-token:';
+
+const isLocalDevToken = (token: string | null) =>
+  Boolean(token?.startsWith(LOCAL_DEV_TOKEN_PREFIX));
 
 const CONNECTION_ERROR_MESSAGE =
   '백엔드 서버와 연결할 수 없습니다. 서버가 켜져 있는지 확인한 뒤 다시 시도해주세요.';
@@ -38,7 +42,7 @@ const apiClient = axios.create({
 apiClient.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('accessToken');
-    if (token) {
+    if (token && !isLocalDevToken(token)) {
       config.headers.Authorization = `Bearer ${token}`;
     }
     return config;
@@ -46,8 +50,8 @@ apiClient.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// 백엔드가 401을 보내면 로그인 정보가 만료되었거나 잘못된 상태입니다.
-// 이때 저장된 로그인 값을 지우고 새로고침해서 다시 로그인하도록 만듭니다.
+// 백엔드가 401을 보내도 전역에서 즉시 로그아웃시키지 않습니다.
+// 저장/미리보기/프로필 같은 개별 행동 중 일시적인 401이 나와도 화면 상태를 보존합니다.
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
@@ -65,23 +69,16 @@ apiClient.interceptors.response.use(
     const skipGlobalAuthRedirect = Boolean((error.config as any)?._skipGlobalAuthRedirect);
 
     if (error.response?.status === 401 && !isAuthSubmitRequest && !skipGlobalAuthRedirect) {
-      // Only treat this as a global auth-expiry event when the failed request
-      // actually included an Authorization header. This prevents unrelated
-      // 401s (e.g. from third-party endpoints or misrouted requests without
-      // credentials) from clearing the user's stored token and forcing a reload.
+      const currentToken = localStorage.getItem('accessToken');
       const hadAuthHeader = Boolean(error.config?.headers && (error.config.headers.Authorization || error.config.headers.authorization));
+      error.userMessage = error.response?.data?.detail || '로그인이 필요하거나 세션이 만료되었습니다. 다시 로그인 후 시도해주세요.';
 
-      if (hadAuthHeader) {
-        localStorage.removeItem('accessToken');
-        localStorage.removeItem('isLoggedIn');
-        localStorage.removeItem('username');
-        localStorage.removeItem('userId');
-        window.location.reload();
-      } else {
-        // Leave token intact; log for debugging so we can inspect which endpoint returned 401.
-        // eslint-disable-next-line no-console
-        console.warn('Received 401 for request without Authorization header:', requestUrl);
-      }
+      // eslint-disable-next-line no-console
+      console.warn('Received 401 without automatic logout:', {
+        requestUrl,
+        hadAuthHeader,
+        localDevToken: isLocalDevToken(currentToken),
+      });
     }
     return Promise.reject(error);
   }

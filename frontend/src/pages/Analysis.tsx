@@ -5,7 +5,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { FiBarChart2, FiGrid, FiImage, FiPaperclip, FiRefreshCcw } from 'react-icons/fi';
+import { FiBarChart2, FiFileText, FiGrid, FiImage, FiPaperclip, FiRefreshCcw } from 'react-icons/fi';
 import {
   AiRow,
   BottomPromptInput,
@@ -481,6 +481,7 @@ function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, c
   const [isProjectSaveOpen, setIsProjectSaveOpen] = useState(false);
   const [projectNameInput, setProjectNameInput] = useState('');
   const [selectedVisual, setSelectedVisual] = useState(null);
+  const [expandedVisualIds, setExpandedVisualIds] = useState<string[]>([]);
   const [selectedSourceKey, setSelectedSourceKey] = useState('');
   const [sourcePreview, setSourcePreview] = useState({ kind: 'empty', url: '', text: '', message: '' });
   const [sourcePreviewCache, setSourcePreviewCache] = useState<Record<string, any>>({});
@@ -528,7 +529,7 @@ function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, c
         ].filter(Boolean);
     const normalizedThread = normalizeRestoredThread(restoredThread);
 
-    setFiles(restoredFiles);
+    setFiles([]);
     setActiveFiles(restoredFiles);
     const restoreVersion = sourceResetVersionRef.current;
     loadSourceFiles(compactIds([
@@ -551,7 +552,7 @@ function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, c
           restoredKeys.forEach((key) => delete next[key]);
           return next;
         });
-        setFiles(restoredSourceFiles);
+        setFiles([]);
         setActiveFiles(restoredSourceFiles);
         setSelectedSourceKey(getFileKey(restoredSourceFiles[0]));
       }
@@ -605,24 +606,40 @@ function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, c
   useEffect(() => {
     if (!isResizingSource) return undefined;
 
-    const handleMouseMove = (event) => {
+    const updateSourcePaneWidth = (clientX: number) => {
       const shell = compareShellRef.current;
       if (!shell) return;
       const rect = shell.getBoundingClientRect();
-      const nextWidth = ((event.clientX - rect.left) / rect.width) * 100;
+      const nextWidth = ((clientX - rect.left) / rect.width) * 100;
       setSourcePaneWidth(Math.min(75, Math.max(35, nextWidth)));
+    };
+
+    const handleMouseMove = (event) => {
+      event.preventDefault();
+      updateSourcePaneWidth(event.clientX);
+    };
+
+    const handleTouchMove = (event) => {
+      const touch = event.touches?.[0];
+      if (!touch) return;
+      event.preventDefault();
+      updateSourcePaneWidth(touch.clientX);
     };
 
     const stopResize = () => setIsResizingSource(false);
 
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', stopResize);
+    window.addEventListener('touchmove', handleTouchMove, { passive: false });
+    window.addEventListener('touchend', stopResize);
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
 
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', stopResize);
+      window.removeEventListener('touchmove', handleTouchMove);
+      window.removeEventListener('touchend', stopResize);
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
     };
@@ -769,10 +786,19 @@ function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, c
     if (selectedFiles.length === 0) return;
 
     const nextFiles = mergeUniqueFiles(files, selectedFiles);
-    const nextActiveFiles = mergeUniqueFiles(activeFiles, selectedFiles);
+    if (pendingVisualType) {
+      const nextActiveFiles = mergeUniqueFiles(activeFiles, nextFiles);
+      setFiles([]);
+      setActiveFiles(nextActiveFiles);
+      setSelectedSourceKey(getFileKey(selectedFiles[0]));
+      saveSourceFiles([recentConversationIdRef.current, effectiveProjectId], nextActiveFiles);
+      handleCreateVisualFromFiles(pendingVisualType, nextFiles, nextActiveFiles);
+      event.target.value = '';
+      window.setTimeout(() => promptInputRef.current?.focus(), 0);
+      return;
+    }
+
     setFiles(nextFiles);
-    setActiveFiles(nextActiveFiles);
-    saveSourceFiles([recentConversationIdRef.current, effectiveProjectId], nextActiveFiles);
     writeJson(getActiveAnalysisSessionKey(), {
       id: recentConversationIdRef.current,
       conversationId: recentConversationIdRef.current,
@@ -783,29 +809,16 @@ function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, c
       date: formatDate(),
       updatedAt: nowIso(),
       inviteCode: currentProject?.inviteCode || restoredData?.inviteCode,
-      files: toStoredFiles(nextActiveFiles),
+      files: toStoredFiles(activeFiles),
       thread: toStoredThread(messages),
     });
-    setSelectedSourceKey(getFileKey(selectedFiles[0]));
     event.target.value = '';
     window.setTimeout(() => promptInputRef.current?.focus(), 0);
   };
 
   const handleRemoveFile = (file) => {
-    const removedFileKey = getFileKey(file);
     const nextFiles = files.filter((item) => getFileKey(item) !== getFileKey(file));
-    const nextActiveFiles = activeFiles.filter((item) => getFileKey(item) !== getFileKey(file));
     setFiles(nextFiles);
-    setActiveFiles(nextActiveFiles);
-    revokeSourceObjectUrl(removedFileKey);
-    setSourcePreviewCache((prev) => {
-      const next = { ...prev };
-      delete next[removedFileKey];
-      return next;
-    });
-    if (selectedSourceKey === removedFileKey) {
-      setSelectedSourceKey(nextActiveFiles[0] ? getFileKey(nextActiveFiles[0]) : '');
-    }
   };
 
   const handleClipFileAdd = () => {
@@ -1269,6 +1282,7 @@ function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, c
     setIsProjectSaveOpen(false);
     setProjectNameInput('');
     setSelectedVisual(null);
+    setExpandedVisualIds([]);
     setSelectedSourceKey('');
     setSourcePreview({ kind: 'empty', url: '', text: '', message: '' });
     setSourcePreviewCache({});
@@ -1372,8 +1386,16 @@ function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, c
     return <DynamicVisualizer config={asset} fallbackTitle={asset.title} />;
   };
 
-  const renderVisualArtifact = (asset, compact = false, isModal = false) => (
-    <VisualArtifact className={isModal ? 'is-modal' : ''}>
+  const toggleVisualExpanded = (visualId: string) => {
+    setExpandedVisualIds((prev) =>
+      prev.includes(visualId)
+        ? prev.filter((item) => item !== visualId)
+        : [...prev, visualId]
+    );
+  };
+
+  const renderVisualArtifact = (asset, compact = false, isModal = false, openOnClick = false) => (
+    <VisualArtifact className={`${isModal ? 'is-modal' : ''}${openOnClick ? ' is-clickable' : ''}`}>
       <div className="artifact-head">
         <h4>{asset.title}</h4>
         <div className="artifact-meta">
@@ -1381,7 +1403,17 @@ function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, c
           {getAssetTimestamp(asset) && <time dateTime={asset.savedAt || asset.createdAt || asset.updatedAt || ''}>{getAssetTimestamp(asset)}</time>}
         </div>
       </div>
-      <div className="artifact-body">
+      <div
+        className="artifact-body"
+        onClick={openOnClick ? () => setSelectedVisual(asset) : undefined}
+        role={openOnClick ? 'button' : undefined}
+        tabIndex={openOnClick ? 0 : undefined}
+        onKeyDown={openOnClick ? (event) => {
+          if (event.key !== 'Enter' && event.key !== ' ') return;
+          event.preventDefault();
+          setSelectedVisual(asset);
+        } : undefined}
+      >
         {!compact && <p className="artifact-desc">{asset.text}</p>}
         {renderVisualPreview(asset)}
       </div>
@@ -1399,6 +1431,30 @@ function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, c
       )}
     </VisualArtifact>
   );
+
+  const renderVisualLibraryItem = (visual, index) => {
+    const visualId = normalizeVisualId(visual.id) || `${visual.title}-${index}`;
+    const isLatest = index === 0;
+    const isExpanded = isLatest || expandedVisualIds.includes(visualId);
+
+    return (
+      <div key={`${visual.id}-${index}`} className={`asset-item${isExpanded ? ' expanded' : ''}`}>
+        <button
+          type="button"
+          className="asset-title-button"
+          onClick={() => {
+            if (!isLatest) toggleVisualExpanded(visualId);
+          }}
+          aria-expanded={isExpanded}
+        >
+          <strong>{visual.title}</strong>
+          {!isLatest && <span className="toggle-indicator">{isExpanded ? '접기' : '보기'}</span>}
+        </button>
+        <span>{visual.saved ? '프로젝트 보관함 저장됨' : '채팅창에 생성됨'}</span>
+        {isExpanded && renderVisualArtifact(visual, true, false, true)}
+      </div>
+    );
+  };
 
   const renderSourcePreview = () => {
     if (!selectedSourceFile) {
@@ -1434,6 +1490,18 @@ function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, c
     ...generatedVisuals,
     ...visuals.filter((visual) => !generatedVisuals.some((item) => normalizeVisualId(item.id) === normalizeVisualId(visual.id))),
   ]);
+  const questionTimeline = messages
+    .filter((message) => message.role === 'user' && String(message.text || '').trim())
+    .map((message, index) => ({
+      id: message.id,
+      text: String(message.text || '').trim(),
+      label: `Q${index + 1}`,
+    }));
+
+  const scrollToQuestion = (messageId: string) => {
+    const target = document.getElementById(`message-${messageId}`);
+    target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  };
 
   return (
     <Container>
@@ -1448,21 +1516,22 @@ function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, c
             <section className="source-pane">
               <div className="panel-head">
                 <div>
-                  <div className="title">원본 미리보기</div>
+                  <div className="title">미리보기</div>
                   <p className="hint">업로드한 원본을 보면서 시각화와 바로 비교합니다.</p>
                 </div>
               </div>
-              {sourceFiles.length > 1 && (
-                <div className="source-tabs" aria-label="원본 파일 선택">
+              {sourceFiles.length > 0 && (
+                <div className="source-file-list" aria-label="업로드된 파일 목록">
                   {sourceFiles.map((file) => (
                     <button
                       type="button"
                       key={getFileKey(file)}
-                      className={getFileKey(file) === getFileKey(selectedSourceFile) ? 'active' : ''}
+                      className={`source-file-item${getFileKey(file) === getFileKey(selectedSourceFile) ? ' active' : ''}`}
                       onClick={() => setSelectedSourceKey(getFileKey(file))}
                       title={file.name}
                     >
-                      {file.name}
+                      <FiFileText aria-hidden="true" />
+                      <span>{file.name}</span>
                     </button>
                   ))}
                 </div>
@@ -1481,7 +1550,26 @@ function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, c
                 event.preventDefault();
                 setIsResizingSource(true);
               }}
+              onTouchStart={(event) => {
+                event.preventDefault();
+                setIsResizingSource(true);
+              }}
             />
+            {isResizingSource && (
+              <div
+                className="resize-shield"
+                aria-hidden="true"
+                onMouseMove={(event) => {
+                  const shell = compareShellRef.current;
+                  if (!shell) return;
+                  const rect = shell.getBoundingClientRect();
+                  const nextWidth = ((event.clientX - rect.left) / rect.width) * 100;
+                  setSourcePaneWidth(Math.min(75, Math.max(35, nextWidth)));
+                }}
+                onMouseUp={() => setIsResizingSource(false)}
+                onMouseLeave={() => setIsResizingSource(false)}
+              />
+            )}
 
             <section className="visual-library">
               <div className="panel-head">
@@ -1496,18 +1584,7 @@ function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, c
                     <strong>아직 생성된 자료가 없습니다.</strong>
                     <span>표, 그래프, 비교 시각화를 요청하면 이곳에 쌓입니다.</span>
                   </div>
-                ) : visibleVisuals.map((visual, index) => (
-                  <div
-                    key={`${visual.id}-${index}`}
-                    className="asset-item"
-                    onClick={() => setSelectedVisual(visual)}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    <strong>{visual.title}</strong>
-                    <span>{visual.saved ? '프로젝트 보관함 저장됨' : '채팅창에 생성됨'}</span>
-                    {renderVisualArtifact(visual, true)}
-                  </div>
-                ))}
+                ) : visibleVisuals.map((visual, index) => renderVisualLibraryItem(visual, index))}
               </div>
             </section>
           </div>
@@ -1519,18 +1596,7 @@ function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, c
                 <strong>아직 생성된 자료가 없습니다.</strong>
                 <span>채팅창에 “표로 정리해줘”, “그래프로 만들어줘”처럼 요청하면 여기에 표시됩니다.</span>
               </div>
-            ) : visibleVisuals.map((visual, index) => (
-              <div 
-                key={`${visual.id}-${index}`} 
-                className="asset-item"
-                onClick={() => setSelectedVisual(visual)}
-                style={{ cursor: 'pointer' }}
-              >
-                <strong>{visual.title}</strong>
-                <span>{visual.saved ? '프로젝트 보관함 저장됨' : '채팅창에 생성됨'}</span>
-                {renderVisualArtifact(visual, true)}
-              </div>
-            ))}
+            ) : visibleVisuals.map((visual, index) => renderVisualLibraryItem(visual, index))}
           </div>
         </VisualPanel>
 
@@ -1579,8 +1645,23 @@ function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, c
           )}
 
           <StreamMessageArea ref={scrollRef}>
+            {questionTimeline.length > 0 && (
+              <aside className="question-timeline" aria-label="질문 타임라인">
+                {questionTimeline.map((item) => (
+                  <button
+                    type="button"
+                    key={item.id}
+                    onClick={() => scrollToQuestion(item.id)}
+                    title={item.text}
+                  >
+                    <span>{item.label}</span>
+                    <strong>{item.text}</strong>
+                  </button>
+                ))}
+              </aside>
+            )}
             {messages.filter(hasMessageContent).map((message) => (
-              <div key={message.id}>
+              <div key={message.id} id={`message-${message.id}`} className={message.role === 'user' ? 'message-anchor user-anchor' : 'message-anchor'}>
                 {message.role === 'ai' ? (
                   <AiRow>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxWidth: '80%' }}>
@@ -1631,10 +1712,10 @@ function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, c
 
           <BottomPromptInput onKeyDownCapture={handlePromptEnter}>
             {files.length > 0 && (
-              <div className="file-island-list" aria-label="업로드된 파일 목록">
+              <div className="file-island-list" aria-label="전송 대기 파일 목록">
                 {files.map((file) => (
                   <div className="file-island" key={getFileKey(file)} title={file.name}>
-                    <i className="fa-regular fa-file-lines"></i>
+                    <FiFileText aria-hidden="true" />
                     <span>{file.name}</span>
                     <button
                       type="button"
