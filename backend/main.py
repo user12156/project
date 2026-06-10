@@ -19,6 +19,7 @@ from app.core.config import settings
 from app.core.database import close_database, ensure_indexes, ping_database
 from app.routers.analysis import router as analysis_router
 from app.routers.auth import router as auth_router
+from app.routers.document_previews import router as document_previews_router
 from app.routers.discussion_comments import router as discussion_comments_router
 from app.routers.project_files import router as project_files_router
 from app.routers.project_threads import router as project_threads_router
@@ -44,6 +45,7 @@ def _register_routers(api: FastAPI) -> None:
 
     api.include_router(auth_router)
     api.include_router(analysis_router)
+    api.include_router(document_previews_router)
     api.include_router(projects_router)
     api.include_router(visuals_router)
     api.include_router(visual_assets_router)

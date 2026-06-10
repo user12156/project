@@ -1,3 +1,4 @@
+# 서비스: 문서 내용을 PDF 미리보기로 렌더링하는 변환과 프리뷰 생성 보조 모듈입니다.
 import io
 import os
 from functools import lru_cache

@@ -9,19 +9,41 @@ import PasswordChangeModal from '../components/PasswordChangeModal';
 import { useAuth } from '../context/AuthContext';
 import {
   getProjectsKey,
+  getRecentConversationsKey,
   getShareRoomKey,
   readJson,
+  SHARED_PROJECTS_KEY,
   SHARED_ROOM_PREFIX,
 } from '../utils/storageKeys';
 import { MypageWrapper, ProfileCard } from './styles/Mypage.styles';
 
 const asArray = (value) => (Array.isArray(value) ? value : []);
 
+const mergeUniqueRecords = (...groups) => {
+  const records = [];
+  const seen = new Set();
+  groups.flatMap(asArray).forEach((record) => {
+    if (!record) return;
+    const key = record.id || record.projectId || record.conversationId || record.inviteCode || record.title;
+    if (key && seen.has(key)) return;
+    if (key) seen.add(key);
+    records.push(record);
+  });
+  return records;
+};
+
+const getRecordThread = (record) =>
+  asArray(record?.thread).length
+    ? asArray(record.thread)
+    : asArray(record?.messages).length
+      ? asArray(record.messages)
+      : asArray(record?.conversation);
+
 const countProjectResources = (project) => {
   const files = asArray(project?.files);
   const visuals = asArray(project?.visuals);
   const images = asArray(project?.discussionImages);
-  const threadAssets = asArray(project?.thread).filter(
+  const threadAssets = getRecordThread(project).filter(
     (item) => item?.role === 'asset' || Array.isArray(item?.rows)
   );
 
@@ -60,6 +82,9 @@ function Mypage({ onLogoutClick }) {
 
   const calculateStats = useCallback(() => {
     const projects = asArray(readJson(getProjectsKey(), []));
+    const recents = asArray(readJson(getRecentConversationsKey(), []));
+    const sharedProjects = asArray(readJson(SHARED_PROJECTS_KEY, []));
+    const records = mergeUniqueRecords(projects, recents, sharedProjects);
     const username = user?.username;
     const teamCodes = new Set();
 
@@ -73,11 +98,11 @@ function Mypage({ onLogoutClick }) {
 
     setStats({
       projects: projects.length,
-      analysisQuestions: projects.reduce(
-        (total, project) => total + asArray(project.thread).filter((item) => item?.role === 'user').length,
+      analysisQuestions: records.reduce(
+        (total, record) => total + getRecordThread(record).filter((item) => item?.role === 'user').length,
         0
       ),
-      resources: projects.reduce((total, project) => total + countProjectResources(project), 0),
+      resources: records.reduce((total, record) => total + countProjectResources(record), 0),
       teams: teamCodes.size,
     });
   }, [user?.username]);

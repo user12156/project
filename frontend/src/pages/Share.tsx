@@ -17,6 +17,7 @@ import {
   ChatTimelineFeed,
   TalkBubble,
   FooterInputBox,
+  CoopPanelToggle,
   VisualModalOverlay,
   VisualModalPanel,
 } from './styles/Share.styles';
@@ -81,31 +82,6 @@ const sanitizeRoom = (room = fallbackRoom) => ({
   ),
 });
 
-const createFreshProjectRoom = (project, inviteCode, baseRoom, username) => {
-  const projectComments = asArray(project?.discussionComments);
-  const projectCommentIds = new Set(projectComments.map((comment) => comment.id));
-  const roomComments = asArray(baseRoom?.comments).filter(
-    (comment) => !comment?.projectId || comment.projectId === project.id
-  );
-  const comments = [
-    ...projectComments,
-    ...roomComments.filter((comment) => !projectCommentIds.has(comment.id)),
-  ];
-  const members = asArray(baseRoom?.members);
-  const alreadyJoined = members.some((member) => member.name === username);
-
-  return {
-    ...fallbackRoom,
-    ...baseRoom,
-    inviteCode,
-    joinedCode: inviteCode,
-    mainProjectId: project.id,
-    loadedProjectIds: [project.id],
-    comments,
-    members: alreadyJoined ? members : [...members, { id: Date.now(), name: username }],
-  };
-};
-
 const formatTime = () => {
   const now = new Date();
   return `오늘 ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
@@ -113,39 +89,14 @@ const formatTime = () => {
 
 const formatDate = () => new Date().toLocaleDateString('ko-KR').replace(/. /g, '.').slice(0, -1);
 
-const formatDateTime = (value) => {
-  if (!value) return '';
-  const text = String(value).trim();
-  if (!/[T\s]\d{1,2}:\d{2}/.test(text)) return text;
-  const parsed = new Date(text);
-
-  if (!Number.isNaN(parsed.getTime())) {
-    const date = parsed.toLocaleDateString('ko-KR').replace(/. /g, '.').slice(0, -1);
-    const time = `${String(parsed.getHours()).padStart(2, '0')}:${String(parsed.getMinutes()).padStart(2, '0')}`;
-    return `${date} ${time}`;
-  }
-
-  return text;
-};
-
-const buildAssetTimestamp = (asset, project) => {
-  const rawDate = asset?.createdAt || asset?.date || asset?.updatedAt || asset?.savedAt || project?.createdAt || project?.date || project?.updatedAt;
-  const rawTime = asset?.time;
-  const formattedDate = formatDateTime(rawDate);
-  if (!rawTime) return formattedDate;
-  if (/^\d{4}[.-]\d{1,2}[.-]\d{1,2}/.test(String(rawTime))) {
-    return rawTime;
-  }
-  if (!formattedDate) return rawTime;
-  if (formattedDate.includes(String(rawTime).replace(/^오늘\s*/, ''))) return formattedDate;
-  return `${formattedDate} ${String(rawTime).replace(/^오늘\s*/, '')}`;
-};
-
 // 화면에서 사용할 초대코드를 생성합니다.
 const createInviteCode = () => {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   return Array.from({ length: 7 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
 };
+
+const normalizeInviteCodeText = (value = '') =>
+  String(value).trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
 
 // 업로드된 이미지를 data URL로 변환합니다.
 const readFileAsDataUrl = (file: File): Promise<string> =>
@@ -317,7 +268,6 @@ function ShareC({ onRestoreTrigger, username = 'Guest', initialProject = null })
   const chatFeedRef = useRef(null);
   const assetStartRef = useRef(null);
   const shouldScrollToAssetsRef = useRef(false);
-  const skipLastRoomRestoreRef = useRef(false);
 
   // 로컬 저장소에서 사용자의 프로젝트 목록을 불러옵니다.
   const loadOwnProjects = () => {
@@ -351,6 +301,18 @@ function ShareC({ onRestoreTrigger, username = 'Guest', initialProject = null })
   const [notice, setNotice] = useState('');
   const [imageDataUrls, setImageDataUrls] = useState({});
   const [selectedVisualAsset, setSelectedVisualAsset] = useState(null);
+  const [isCoopPanelCollapsed, setIsCoopPanelCollapsed] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth <= 1000);
+    };
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
 
   // 로컬 프로젝트와 공유 프로젝트를 합쳐서 하나의 프로젝트 목록으로 만듭니다.
   // 공유본의 이미지를 항상 우선으로 반영합니다.
@@ -385,10 +347,12 @@ function ShareC({ onRestoreTrigger, username = 'Guest', initialProject = null })
     [allProjects, room.loadedProjectIds]
   );
 
-  const activeProject =
-    allProjects.find((project) => project.id === room.mainProjectId) ||
-    allProjects.find((project) => project.id === selectedProjectId) ||
-    loadedProjects[0];
+  const hasActiveShare = Boolean(activeShareCode);
+  const activeProject = hasActiveShare
+    ? allProjects.find((project) => project.id === room.mainProjectId) ||
+      allProjects.find((project) => project.id === selectedProjectId) ||
+      loadedProjects[0]
+    : null;
   const activeInviteCode = activeProject?.inviteCode || activeShareCode || '';
   const supportProjects = useMemo(
     () => loadedProjects.filter((project) => project.id !== activeProject?.id),
@@ -443,7 +407,6 @@ function ShareC({ onRestoreTrigger, username = 'Guest', initialProject = null })
       projectId: project.id,
       projectTitle: project.title,
       sourceType,
-      displayTimestamp: buildAssetTimestamp(image, project),
     }));
 
     let lastQuestionText = '';
@@ -458,7 +421,7 @@ function ShareC({ onRestoreTrigger, username = 'Guest', initialProject = null })
           ...item,
         };
         const rawType = mergedItem.type || mergedItem.kind;
-        const isVisual = ['chart', 'table'].includes(rawType) || mergedItem.data || mergedItem.columns || mergedItem.series;
+        const isVisual = ['chart', 'table', 'mindmap'].includes(rawType) || mergedItem.data || mergedItem.columns || mergedItem.series;
         const nextAsset = {
           ...mergedItem,
           id: `thread-${item.id}`,
@@ -476,7 +439,6 @@ function ShareC({ onRestoreTrigger, username = 'Guest', initialProject = null })
           projectId: project.id,
           projectTitle: project.title,
           sourceType,
-          displayTimestamp: buildAssetTimestamp(mergedItem, project),
         };
         return nextAsset.type === 'visual' ? coerceGraphAsset(nextAsset, promptText) : nextAsset;
       })
@@ -501,7 +463,6 @@ function ShareC({ onRestoreTrigger, username = 'Guest', initialProject = null })
         projectId: project.id,
         projectTitle: project.title,
         sourceType,
-        displayTimestamp: buildAssetTimestamp(visual, project),
       }));
 
     return [...threadItems, ...orphanVisuals, ...images].filter(hasTimelineAssetContent);
@@ -573,6 +534,12 @@ function ShareC({ onRestoreTrigger, username = 'Guest', initialProject = null })
   // room 상태가 변경될 때 로컬 저장소에도 업데이트합니다.
   // 활성 초대코드가 있으면 공유 방과 일반 방 둘 다 동기화합니다.
   useEffect(() => {
+    if (!activeShareCode) {
+      if (JSON.stringify(readJson(getShareRoomKey(), null)) !== JSON.stringify(fallbackRoom)) {
+        writeJson(getShareRoomKey(), { ...fallbackRoom });
+      }
+      return;
+    }
     const roomKey = activeShareCode ? getSharedRoomKey(activeShareCode) : getShareRoomKey();
     const nextRoom = {
       ...room,
@@ -615,10 +582,6 @@ function ShareC({ onRestoreTrigger, username = 'Guest', initialProject = null })
   useEffect(() => {
     setProjects(loadOwnProjects());
     setSharedProjects(loadSharedProjects());
-    if (skipLastRoomRestoreRef.current) {
-      skipLastRoomRestoreRef.current = false;
-      return;
-    }
     if (!activeShareCode) setRoom(loadLastRoom());
   }, [username, activeShareCode]);
 
@@ -627,24 +590,25 @@ function ShareC({ onRestoreTrigger, username = 'Guest', initialProject = null })
 
     const normalizedCode = initialProject.inviteCode;
     const sharedRoom = sanitizeRoom(readJson(getSharedRoomKey(normalizedCode), fallbackRoom));
-    const matchedProject =
-      allProjects.find((project) => project.id === initialProject.projectId) ||
-      allProjects.find((project) => project.inviteCode === normalizedCode) ||
-      {
-        id: initialProject.projectId,
-        title: initialProject.projectTitle,
-        inviteCode: normalizedCode,
-        discussionComments: [],
-      };
-    const nextRoom = createFreshProjectRoom(matchedProject, normalizedCode, sharedRoom, username);
+    const nextIds = Array.from(new Set([
+      ...asArray(sharedRoom.loadedProjectIds),
+      initialProject.projectId,
+    ]));
+    const alreadyJoined = asArray(sharedRoom.members).some((member) => member.name === username);
 
     setActiveShareCode(normalizedCode);
     setSelectedProjectId(initialProject.projectId);
-    setRoom(nextRoom);
-    setSupportInviteCode('');
-    setSelectedVisualAsset(null);
+    setRoom({
+      ...sharedRoom,
+      inviteCode: normalizedCode,
+      joinedCode: normalizedCode,
+      mainProjectId: initialProject.projectId,
+      loadedProjectIds: nextIds,
+      comments: asArray(sharedRoom.comments),
+      members: alreadyJoined ? asArray(sharedRoom.members) : [...asArray(sharedRoom.members), { id: Date.now(), name: username }],
+    });
     setNotice(`"${initialProject.projectTitle || '공유 분석'}" 공유 토론방을 불러왔습니다.`);
-  }, [allProjects, initialProject, username]);
+  }, [initialProject, username]);
 
   useEffect(() => {
     if (!chatFeedRef.current) return;
@@ -697,8 +661,37 @@ function ShareC({ onRestoreTrigger, username = 'Guest', initialProject = null })
     };
   }, [imageDataUrls, projectAssets]);
 
+  const readInviteCodeFromClipboard = async () => {
+    try {
+      const clipboardText = await navigator.clipboard?.readText?.();
+      const normalizedCode = normalizeInviteCodeText(clipboardText);
+      if (!normalizedCode) {
+        setNotice('클립보드에서 초대코드를 찾지 못했습니다.');
+        return '';
+      }
+      return normalizedCode;
+    } catch {
+      setNotice('브라우저 권한 때문에 클립보드를 자동으로 읽지 못했습니다. 직접 붙여넣어 주세요.');
+      return '';
+    }
+  };
+
+  const fillMainInviteCodeFromClipboard = async () => {
+    const normalizedCode = await readInviteCodeFromClipboard();
+    if (!normalizedCode) return;
+    setRoom((prev) => ({ ...prev, joinedCode: normalizedCode }));
+    setNotice('복사한 초대코드를 넣었습니다. Enter를 누르거나 입력 버튼을 눌러주세요.');
+  };
+
+  const fillSupportInviteCodeFromClipboard = async () => {
+    const normalizedCode = await readInviteCodeFromClipboard();
+    if (!normalizedCode) return;
+    setSupportInviteCode(normalizedCode);
+    setNotice('복사한 비교 프로젝트 초대코드를 넣었습니다. Enter를 눌러 불러오세요.');
+  };
+
   const joinWithCode = () => {
-    const normalizedCode = room.joinedCode.trim();
+    const normalizedCode = normalizeInviteCodeText(room.joinedCode);
     const matchedProject = allProjects.find((project) => project.inviteCode === normalizedCode);
 
     if (!matchedProject) {
@@ -707,31 +700,52 @@ function ShareC({ onRestoreTrigger, username = 'Guest', initialProject = null })
     }
 
     const sharedRoom = sanitizeRoom(readJson(getSharedRoomKey(normalizedCode), fallbackRoom));
-    const nextRoom = createFreshProjectRoom(matchedProject, normalizedCode, sharedRoom, username);
+    const projectCommentIds = new Set(asArray(matchedProject.discussionComments).map((comment) => comment.id));
+    const mergedComments = [
+      ...asArray(matchedProject.discussionComments),
+      ...asArray(sharedRoom.comments).filter((comment) => !projectCommentIds.has(comment.id)),
+    ];
+    const nextIds = sharedRoom.loadedProjectIds.includes(matchedProject.id)
+      ? sharedRoom.loadedProjectIds
+      : [...sharedRoom.loadedProjectIds, matchedProject.id];
+    const alreadyJoined = asArray(sharedRoom.members).some((member) => member.name === username);
 
     setActiveShareCode(normalizedCode);
     setSelectedProjectId(matchedProject.id);
-    setRoom(nextRoom);
-    setSupportInviteCode('');
-    setSelectedVisualAsset(null);
-    shouldScrollToAssetsRef.current = false;
-    setNotice(`새 공유 페이지: "${matchedProject.title}" 결과 토론방을 불러왔습니다.`);
+    setRoom({
+      ...sharedRoom,
+      inviteCode: normalizedCode,
+      joinedCode: normalizedCode,
+      mainProjectId: matchedProject.id,
+      loadedProjectIds: nextIds,
+      comments: mergedComments,
+      members: alreadyJoined ? asArray(sharedRoom.members) : [...asArray(sharedRoom.members), { id: Date.now(), name: username }],
+    });
+    setNotice(`참여 완료: "${matchedProject.title}" 결과 토론방을 불러왔습니다.`);
   };
 
-  const handleCreateNewSharePage = () => {
-    skipLastRoomRestoreRef.current = true;
-    shouldScrollToAssetsRef.current = false;
-    setActiveShareCode('');
+  const createNewSharedRoom = () => {
+    const inviteCode = createInviteCode();
+    const nextRoom = {
+      ...fallbackRoom,
+      inviteCode,
+      joinedCode: inviteCode,
+      members: [{ id: Date.now(), name: username, role: 'owner' }],
+    };
+
+    setActiveShareCode(inviteCode);
     setSelectedProjectId('');
     setSupportInviteCode('');
     setTypedMsg('');
+    setImageDataUrls({});
     setSelectedVisualAsset(null);
-    setRoom({ ...fallbackRoom });
-    setNotice('새 공유 페이지를 만들었습니다. 초대코드를 입력해 프로젝트를 불러오세요.');
+    setRoom(nextRoom);
+    writeJson(getShareRoomKey(), nextRoom);
+    setNotice(`새 공유방을 생성했습니다. 초대코드: ${inviteCode}`);
   };
 
   const loadSupportProjectByCode = () => {
-    const normalizedCode = supportInviteCode.trim();
+    const normalizedCode = normalizeInviteCodeText(supportInviteCode);
     if (!normalizedCode) {
       setNotice('비교할 보조 프로젝트의 초대코드를 입력해주세요.');
       return;
@@ -1041,7 +1055,7 @@ function ShareC({ onRestoreTrigger, username = 'Guest', initialProject = null })
   };
 
   const renderVisualPreview = (asset) => {
-    if (asset.data || asset.columns || asset.series || ['chart', 'table'].includes(asset.kind || asset.type)) {
+    if (asset.data || asset.columns || asset.series || ['chart', 'table', 'mindmap'].includes(asset.kind || asset.type)) {
       return <DynamicVisualizer config={asset} fallbackTitle={asset.title} />;
     }
     if (asset.kind === 'table') {
@@ -1113,235 +1127,296 @@ function ShareC({ onRestoreTrigger, username = 'Guest', initialProject = null })
     );
   };
 
-  // 페이지 전체 레이아웃: 왼쪽은 프로젝트 토론 자료, 오른쪽은 초대코드 및 댓글 입력 패널.
-  return (
-    <Container>
-      <MainTimelineContent>
-        <TimelineInner>
-          <div className="header-area">
-            <i className="fa-solid fa-comments menu-toggle"></i>
-            <h2>{activeProject?.title || '공유 토론방'}</h2>
-          </div>
+  const renderHeader = () => (
+    <div className="header-area">
+      <i className="fa-solid fa-comments menu-toggle"></i>
+      <h2>{activeProject?.title || '공유 토론방'}</h2>
+    </div>
+  );
 
-          <ProjectLoadBar>
-            <input
-              ref={imageInputRef}
-              type="file"
-              accept="image/*"
-              multiple
-              onChange={handleImageUpload}
-            />
-            <button type="button" className="image-load-btn" onClick={() => imageInputRef.current?.click()}>
-              <i className="fa-regular fa-image"></i>
-              이미지 불러오기
-            </button>
-            <div className="support-code-box">
-              <input
-                className="support-code-input"
-                value={supportInviteCode}
-                placeholder="비교 프로젝트 초대코드"
-                onChange={(event) => setSupportInviteCode(event.target.value)}
-                onKeyDown={(event) => event.key === 'Enter' && loadSupportProjectByCode()}
-              />
-              <button type="button" className="support-load-btn" onClick={loadSupportProjectByCode}>
-                <i className="fa-regular fa-folder-open"></i>
-                프로젝트 카드 불러오기
-              </button>
-            </div>
-            <span className="hint">메인 토론방에 보조 프로젝트를 붙여 비교합니다.</span>
-          </ProjectLoadBar>
-
-          {activeProject && (
-            <div className="share-project-card">
-              <div className="tag-row">
-                <span className="tag">{activeProject.type || '프로젝트'}</span>
-                <span className="invite">초대코드 {activeProject.inviteCode || activeShareCode}</span>
-              </div>
-              <h3>{activeProject.title}</h3>
-              <div className="project-meta">
-                <span>{asArray(activeProject.files).length}개 문서</span>
-                <span>{asArray(activeProject.thread).length}개 분석 기록</span>
-                <span>{projectAssets.length}개 토론 자료</span>
-                <span>{supportProjects.length}개 비교 프로젝트</span>
-                <span>{projectComments.length}개 코멘트</span>
-              </div>
-              <div className="project-actions">
-                <button type="button" onClick={handleContinueProject}>분석 페이지에서 이어서 작업</button>
-                <button type="button" className="save-shared-card" onClick={handleSaveSharedProjectCard}>
-                  공유 분석 카드 저장
-                </button>
-              </div>
-            </div>
-          )}
-
-          <SectionTitle ref={assetStartRef}>프로젝트 결과 토론 자료</SectionTitle>
-          <TimelineWrapper>
-            {!activeProject ? (
-              <div className="empty-state">오른쪽 초대코드를 입력하면 프로젝트 결과와 토론 기록이 표시됩니다.</div>
-            ) : projectAssets.length === 0 ? (
-              <div className="empty-state">아직 저장된 결과 자료가 없습니다. 분석 페이지에서 표/차트/그래프를 저장하거나 이미지를 추가해보세요.</div>
-            ) : projectAssets.map((asset, index) => (
-              <TimelineNode key={`${asset.id}-${index}`} $active={index === 0}>
-                <div className="dot"></div>
-                <div className="card">
-                  <div className="asset-head">
-                    <div className={`project-label ${asset.sourceType === 'support' ? 'support' : ''}`}>
-                      {asset.sourceType === 'support' ? '비교 프로젝트' : '메인 프로젝트'} · {asset.projectTitle}
-                    </div>
-                    {asset.displayTimestamp && (
-                      <time className="asset-timestamp" dateTime={asset.createdAt || asset.date || asset.updatedAt || ''}>
-                        {asset.displayTimestamp}
-                      </time>
-                    )}
-                  </div>
-                  <h4>{asset.title}</h4>
-                  {asset.type === 'question' && (
-                    <div className="question-card">{asset.text}</div>
-                  )}
-                  {asset.type === 'image' && (
-                    <img className="discussion-image" src={asset.dataUrl} alt={asset.title} />
-                  )}
-                  {asset.type === 'visual' && (
-                    <button
-                      type="button"
-                      className="visual-preview visual-preview-button"
-                      onClick={() => setSelectedVisualAsset(asset)}
-                      aria-label={`${asset.title} 크게 보기`}
-                    >
-                      {renderVisualPreview(asset)}
-                    </button>
-                  )}
-                  {asset.type === 'answer' && asset.text && (
-                    <details className="answer-fold">
-                      <summary>
-                        <span>{splitEvidenceSections(asset.text).main.replace(/\s+/g, ' ').slice(0, 120)}{splitEvidenceSections(asset.text).main.length > 120 ? '...' : ''}</span>
-                        <b>열어서 보기</b>
-                      </summary>
-                      {renderCompactAnswer(asset.text)}
-                    </details>
-                  )}
-                  {asset.text && !['question', 'visual', 'answer'].includes(asset.type) && <div className="body">{asset.text}</div>}
-                  {Array.isArray(asset.details) && asset.details.length > 0 && (
-                    <div className="detail-list">
-                      {asset.details.map((item, itemIndex) => (
-                        <div className="detail-item" key={`${asset.id}-detail-${itemIndex}`}>
-                          <span>{item?.lbl || '항목'}</span>
-                          <strong>{item?.val || '-'}</strong>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {asset.type !== 'visual' && renderAssetTable(asset.rows)}
-                  {asset.uploadedBy && <div className="meta">업로드 {asset.uploadedBy}</div>}
-                </div>
-              </TimelineNode>
-            ))}
-          </TimelineWrapper>
-        </TimelineInner>
-      </MainTimelineContent>
-
-      <RightCoopPanel $error={notice.includes('정확히')}>
-        <button className="new-share-page-btn" type="button" onClick={handleCreateNewSharePage}>
-          <i className="fa-solid fa-plus"></i>
-          새로운 공유 페이지 만들기
+  const renderProjectLoadBar = () => (
+    <ProjectLoadBar>
+      <input
+        ref={imageInputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        onChange={handleImageUpload}
+      />
+      <button type="button" className="image-load-btn" onClick={() => imageInputRef.current?.click()}>
+        <i className="fa-regular fa-image"></i>
+        이미지 불러오기
+      </button>
+      <div className="support-code-box">
+        <button type="button" className="support-load-btn" onClick={loadSupportProjectByCode}>
+          <i className="fa-regular fa-folder-open"></i>
+          프로젝트 카드 불러오기
         </button>
-        <div className="invite-help">초대코드로 프로젝트를 불러옵니다</div>
-        <div className="code-row top-code">
-          <div className="code-label">초대코드</div>
-          <input
-            className="code-input"
-            value={room.joinedCode}
-            placeholder={activeInviteCode || '프로젝트 초대코드'}
-            onChange={(event) => setRoom((prev) => ({ ...prev, joinedCode: event.target.value }))}
-            onKeyDown={(event) => event.key === 'Enter' && joinWithCode()}
-          />
-          <button className="join-action" type="button" onClick={joinWithCode}>
-            입력
-          </button>
-        </div>
-        <div className="notice">{notice}</div>
+        <input
+          className="support-code-input"
+          value={supportInviteCode}
+          placeholder="비교 프로젝트 초대코드"
+          onClick={fillSupportInviteCodeFromClipboard}
+          onChange={(event) => setSupportInviteCode(normalizeInviteCodeText(event.target.value))}
+          onKeyDown={(event) => event.key === 'Enter' && loadSupportProjectByCode()}
+          title="클릭하면 복사한 초대코드를 자동으로 넣습니다."
+        />
+      </div>
+      <span className="hint">메인 토론방에 보조 프로젝트를 붙여 비교합니다.</span>
+    </ProjectLoadBar>
+  );
 
-        <MembersBox>
-          <h5>참여 인원</h5>
-          {sortedMembers.length === 0 ? (
-            <div className="empty">초대코드 입력 후 표시됩니다.</div>
-          ) : (
-            sortedMembers.map((member) => (
-              <div
-                className={`m-item ${member.name === projectOwner ? 'owner' : ''}`}
-                key={`${member.id}-${member.name}`}
-              >
-                <i className={member.name === projectOwner ? 'fa-solid fa-crown' : 'fa-regular fa-circle-user'}></i>
-                <span>{member.name}</span>
+  const renderShareProjectCard = () => (
+    <div className="share-project-card">
+      <div className="tag-row">
+        <span className="tag">{activeProject.type || '프로젝트'}</span>
+        <span className="invite">초대코드 {activeProject.inviteCode || activeShareCode}</span>
+      </div>
+      <h3>{activeProject.title}</h3>
+      <div className="project-meta">
+        <span>{asArray(activeProject.files).length}개 문서</span>
+        <span>{asArray(activeProject.thread).length}개 분석 기록</span>
+        <span>{projectAssets.length}개 토론 자료</span>
+        <span>{supportProjects.length}개 비교 프로젝트</span>
+        <span>{projectComments.length}개 코멘트</span>
+      </div>
+      <div className="project-actions">
+        <button type="button" onClick={handleContinueProject}>분석 페이지에서 이어서 작업</button>
+        <button type="button" className="save-shared-card" onClick={handleSaveSharedProjectCard}>
+          공유 분석 카드 저장
+        </button>
+      </div>
+    </div>
+  );
+
+  const renderTimeline = () => (
+    <>
+      <SectionTitle ref={assetStartRef}>프로젝트 결과 토론 자료</SectionTitle>
+      <TimelineWrapper>
+        {!activeProject ? (
+          <div className="empty-state">오른쪽 초대코드를 입력하면 프로젝트 결과와 토론 기록이 표시됩니다.</div>
+        ) : projectAssets.length === 0 ? (
+          <div className="empty-state">아직 저장된 결과 자료가 없습니다. 분석 페이지에서 표/차트/그래프를 저장하거나 이미지를 추가해보세요.</div>
+        ) : projectAssets.map((asset, index) => (
+          <TimelineNode key={`${asset.id}-${index}`} $active={index === 0}>
+            <div className="dot"></div>
+            <div className="card">
+              <div className={`project-label ${asset.sourceType === 'support' ? 'support' : ''}`}>
+                {asset.sourceType === 'support' ? '비교 프로젝트' : '메인 프로젝트'} · {asset.projectTitle}
               </div>
-            ))
-          )}
-        </MembersBox>
-
-        <ChatTimelineFeed ref={chatFeedRef}>
-          {projectComments.length === 0 ? (
-            <div className="chat-empty">프로젝트 결과를 보며 코멘트를 남겨보세요.</div>
-          ) : projectComments.map((comment) => (
-            <TalkBubble key={comment.id} $isMe={comment.user === username}>
-              {comment.user !== username && (
-                <div className="user-id">
-                  <i className="fa-regular fa-circle-user"></i> {comment.user}
+              <h4>{asset.title}</h4>
+              {asset.type === 'question' && (
+                <div className="question-card">{asset.text}</div>
+              )}
+              {asset.type === 'image' && (
+                <img className="discussion-image" src={asset.dataUrl} alt={asset.title} />
+              )}
+              {asset.type === 'visual' && (
+                <button
+                  type="button"
+                  className="visual-preview visual-preview-button"
+                  onClick={() => setSelectedVisualAsset(asset)}
+                  aria-label={`${asset.title} 크게 보기`}
+                >
+                  {renderVisualPreview(asset)}
+                </button>
+              )}
+              {asset.type === 'answer' && asset.text && (
+                <details className="answer-fold">
+                  <summary>
+                    <span>{splitEvidenceSections(asset.text).main.replace(/\s+/g, ' ').slice(0, 120)}{splitEvidenceSections(asset.text).main.length > 120 ? '...' : ''}</span>
+                    <b>열어서 보기</b>
+                  </summary>
+                  {renderCompactAnswer(asset.text)}
+                </details>
+              )}
+              {asset.text && !['question', 'visual', 'answer'].includes(asset.type) && <div className="body">{asset.text}</div>}
+              {Array.isArray(asset.details) && asset.details.length > 0 && (
+                <div className="detail-list">
+                  {asset.details.map((item, itemIndex) => (
+                    <div className="detail-item" key={`${asset.id}-detail-${itemIndex}`}>
+                      <span>{item?.lbl || '항목'}</span>
+                      <strong>{item?.val || '-'}</strong>
+                    </div>
+                  ))}
                 </div>
               )}
-              <div className="msg-row">
-                <div className="message-actions">
-                  <div className="bubble">{comment.text}</div>
-                  {comment.user === username && (
-                    <button
-                      className="delete-btn"
-                      type="button"
-                      aria-label="내 코멘트 삭제"
-                      onClick={() => handleDeleteComment(comment.id)}
-                    >
-                      ×
-                    </button>
-                  )}
-                </div>
-                <div className="timestamp">{comment.time}</div>
-              </div>
-            </TalkBubble>
-          ))}
-        </ChatTimelineFeed>
-
-        <FooterInputBox>
-          <input
-            type="text"
-            placeholder={activeProject ? '프로젝트 결과에 대한 코멘트 작성' : '먼저 초대코드를 입력하세요'}
-            value={typedMsg}
-            onChange={(event) => setTypedMsg(event.target.value)}
-            onCompositionStart={() => setIsComposingMessage(true)}
-            onCompositionEnd={() => setIsComposingMessage(false)}
-            onKeyDown={(event) => {
-              const isComposing = event.nativeEvent.isComposing || isComposingMessage;
-              if (event.key === 'Enter' && !isComposing) handleSendComment();
-            }}
-          />
-          <button type="button" onClick={handleSendComment}>
-            저장
-          </button>
-        </FooterInputBox>
-      </RightCoopPanel>
-
-      {selectedVisualAsset && (
-        <VisualModalOverlay onClick={() => setSelectedVisualAsset(null)}>
-          <VisualModalPanel onClick={(event) => event.stopPropagation()}>
-            <div className="modal-header">
-              <div>
-                <span>{selectedVisualAsset.projectTitle || '공유 프로젝트'}</span>
-                <h3>{selectedVisualAsset.title || '시각화 자료'}</h3>
-              </div>
-              <button type="button" onClick={() => setSelectedVisualAsset(null)} aria-label="닫기">×</button>
+              {asset.type !== 'visual' && renderAssetTable(asset.rows)}
+              {asset.uploadedBy && <div className="meta">{asset.uploadedBy} · {asset.time}</div>}
             </div>
-            <div className="modal-body">
-              <DynamicVisualizer config={selectedVisualAsset} fallbackTitle={selectedVisualAsset.title} />
+          </TimelineNode>
+        ))}
+      </TimelineWrapper>
+    </>
+  );
+
+  const renderCreateRoomBtn = () => (
+    <button className="load-btn" type="button" onClick={createNewSharedRoom}>
+      <i className="fa-solid fa-rotate-right" aria-hidden="true"></i>
+      새 공유방 생성
+    </button>
+  );
+
+  const renderInviteCodeInput = () => (
+    <>
+      <div className="invite-help">초대코드로 프로젝트를 불러옵니다</div>
+      <div className="code-row top-code">
+        <div className="code-label">초대코드</div>
+        <input
+          className="code-input"
+          value={room.joinedCode}
+          placeholder={activeInviteCode || '프로젝트 초대코드'}
+          onClick={fillMainInviteCodeFromClipboard}
+          onChange={(event) => setRoom((prev) => ({ ...prev, joinedCode: normalizeInviteCodeText(event.target.value) }))}
+          onKeyDown={(event) => event.key === 'Enter' && joinWithCode()}
+          title="클릭하면 복사한 초대코드를 자동으로 넣습니다."
+        />
+        <button className="join-action" type="button" onClick={joinWithCode}>
+          입력
+        </button>
+      </div>
+    </>
+  );
+
+  const renderNoticeBox = () => (
+    <div className={`notice ${notice.includes('정확히') ? 'error' : ''}`}>{notice}</div>
+  );
+
+  const renderMembersBox = () => (
+    <MembersBox>
+      <h5>참여 인원</h5>
+      {sortedMembers.length === 0 ? (
+        <div className="empty">초대코드 입력 후 표시됩니다.</div>
+      ) : (
+        sortedMembers.map((member) => (
+          <div
+            className={`m-item ${member.name === projectOwner ? 'owner' : ''}`}
+            key={`${member.id}-${member.name}`}
+          >
+            <i className={member.name === projectOwner ? 'fa-solid fa-crown' : 'fa-regular fa-circle-user'}></i>
+            <span>{member.name}</span>
+          </div>
+        ))
+      )}
+    </MembersBox>
+  );
+
+  const renderChatTimelineFeed = () => (
+    <ChatTimelineFeed ref={chatFeedRef}>
+      {projectComments.length === 0 ? (
+        <div className="chat-empty">프로젝트 결과를 보며 코멘트를 남겨보세요.</div>
+      ) : projectComments.map((comment) => (
+        <TalkBubble key={comment.id} $isMe={comment.user === username}>
+          {comment.user !== username && (
+            <div className="user-id">
+              <i className="fa-regular fa-circle-user"></i> {comment.user}
             </div>
-          </VisualModalPanel>
-        </VisualModalOverlay>
+          )}
+          <div className="msg-row">
+            <div className="message-actions">
+              <div className="bubble">{comment.text}</div>
+              {comment.user === username && (
+                <button
+                  className="delete-btn"
+                  type="button"
+                  aria-label="내 코멘트 삭제"
+                  onClick={() => handleDeleteComment(comment.id)}
+                >
+                  ×
+                </button>
+              )}
+            </div>
+            <div className="timestamp">{comment.time}</div>
+          </div>
+        </TalkBubble>
+      ))}
+    </ChatTimelineFeed>
+  );
+
+  const renderFooterInputBox = () => (
+    <FooterInputBox>
+      <input
+        type="text"
+        placeholder={activeProject ? '프로젝트 결과에 대한 코멘트 작성' : '먼저 초대코드를 입력하세요'}
+        value={typedMsg}
+        onChange={(event) => setTypedMsg(event.target.value)}
+        onCompositionStart={() => setIsComposingMessage(true)}
+        onCompositionEnd={() => setIsComposingMessage(false)}
+        onKeyDown={(event) => {
+          const isComposing = event.nativeEvent.isComposing || isComposingMessage;
+          if (event.key === 'Enter' && !isComposing) handleSendComment();
+        }}
+      />
+      <button type="button" onClick={handleSendComment}>
+        저장
+      </button>
+    </FooterInputBox>
+  );
+
+  const renderVisualModal = () => (
+    <VisualModalOverlay onClick={() => setSelectedVisualAsset(null)}>
+      <VisualModalPanel onClick={(event) => event.stopPropagation()}>
+        <div className="modal-header">
+          <div>
+            <span>{selectedVisualAsset.projectTitle || '공유 프로젝트'}</span>
+            <h3>{selectedVisualAsset.title || '시각화 자료'}</h3>
+          </div>
+          <button type="button" onClick={() => setSelectedVisualAsset(null)} aria-label="닫기">×</button>
+        </div>
+        <div className="modal-body">
+          <DynamicVisualizer config={selectedVisualAsset} fallbackTitle={selectedVisualAsset.title} />
+        </div>
+      </VisualModalPanel>
+    </VisualModalOverlay>
+  );
+
+  // 페이지 전체 레이아웃: 모바일에서는 RightCoopPanel이 order:1로 위에, MainTimelineContent가 order:2로 아래에 표시됩니다.
+  return (
+    <Container>
+      {isMobile ? (
+        <>
+          {renderHeader()}
+          {renderCreateRoomBtn()}
+          {renderInviteCodeInput()}
+          {renderNoticeBox()}
+          {renderProjectLoadBar()}
+          {activeProject && renderShareProjectCard()}
+          {renderTimeline()}
+          {renderMembersBox()}
+          {renderChatTimelineFeed()}
+          {renderFooterInputBox()}
+        </>
+      ) : (
+        <>
+          <MainTimelineContent>
+            <TimelineInner>
+              {renderHeader()}
+              {renderProjectLoadBar()}
+              {activeProject && renderShareProjectCard()}
+              {renderTimeline()}
+            </TimelineInner>
+          </MainTimelineContent>
+
+          <CoopPanelToggle
+            type="button"
+            $collapsed={isCoopPanelCollapsed}
+            onClick={() => setIsCoopPanelCollapsed((prev) => !prev)}
+            aria-expanded={!isCoopPanelCollapsed}
+            aria-label={isCoopPanelCollapsed ? '협업 패널 열기' : '협업 패널 접기'}
+            title={isCoopPanelCollapsed ? '협업 패널 열기' : '협업 패널 접기'}
+          >
+            {isCoopPanelCollapsed ? '협업 열기' : '협업 접기'}
+          </CoopPanelToggle>
+
+          <RightCoopPanel $collapsed={isCoopPanelCollapsed}>
+            {renderCreateRoomBtn()}
+            {renderInviteCodeInput()}
+            {renderNoticeBox()}
+            {renderMembersBox()}
+            {renderChatTimelineFeed()}
+            {renderFooterInputBox()}
+          </RightCoopPanel>
+        </>
       )}
     </Container>
   );

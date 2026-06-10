@@ -7,6 +7,8 @@ import axios from 'axios';
 interface AnalysisChatOptions {
   conversationId?: string;
   openaiApiKey?: string;
+  googleApiKey?: string;
+  llmProvider?: string;
 }
 
 const isBrowserFile = (file: unknown): file is File | Blob =>
@@ -113,7 +115,7 @@ export const analysisAPI = {
     const formData = new FormData();
     formData.append('file', file, file.name || 'document');
 
-    return apiClient.post('/api/analysis/preview', formData, {
+    return apiClient.post('/api/document-previews/pdf', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
       responseType: 'blob',
     });
@@ -122,6 +124,9 @@ export const analysisAPI = {
     const formData = new FormData();
     formData.append('question', question);
     if (options.conversationId) formData.append('conversation_id', options.conversationId);
+    formData.append('llm_provider', options.llmProvider || 'auto');
+    if (options.openaiApiKey) formData.append('openai_api_key', options.openaiApiKey);
+    if (options.googleApiKey) formData.append('google_api_key', options.googleApiKey);
     if (analysisText) formData.append('analysis_text', analysisText);
     files.filter(isBrowserFile).forEach((file) => {
       const filename = file instanceof File ? file.name : 'upload-file';
@@ -135,6 +140,9 @@ export const analysisAPI = {
   generateChatTitle: (question: string, options: AnalysisChatOptions = {}, analysisText = '') => {
     const formData = new FormData();
     formData.append('question', question);
+    formData.append('llm_provider', options.llmProvider || 'auto');
+    if (options.openaiApiKey) formData.append('openai_api_key', options.openaiApiKey);
+    if (options.googleApiKey) formData.append('google_api_key', options.googleApiKey);
     if (analysisText) formData.append('analysis_text', analysisText);
 
     return apiClient.post('/api/analysis/title', formData, {

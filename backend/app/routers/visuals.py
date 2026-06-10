@@ -3,8 +3,9 @@
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
 from app.core.uploads import read_upload_content, validate_upload_count
-from app.services.document_analysis import build_analysis_answer, extract_file_document
-from app.services.visual_buttons import VISUAL_CREATORS
+from app.services.document_processing import extract_file_document
+from app.services.fallback_analysis import build_analysis_answer
+from app.services.visual_buttons.registry import VISUAL_CREATORS
 from models.schemas import VisualResponse
 
 

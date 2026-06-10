@@ -30,9 +30,11 @@ import {
   FeatureCard,
 } from "./styles/Home.styles";
 import {
+  clearActiveAnalysisSessionIfMatched,
   getProjectsKey,
   getRecentConversationsKey,
   readJson,
+  recordMatchesAnyId,
   writeJson,
 } from "../utils/storageKeys";
 import papermateLogo from "../assets/papermate-logo.png";
@@ -91,6 +93,44 @@ const getFriendlyAuthError = (error: any, fallback: string) => {
     return error?.userMessage || "백엔드 서버와 연결할 수 없습니다. 서버가 켜져 있는지 확인한 뒤 다시 시도해주세요.";
   }
   return error.response?.data?.detail || error.message || fallback;
+};
+
+const pickFirstArray = (...values: any[]) =>
+  values.find((value) => Array.isArray(value) && value.length > 0) || [];
+
+const buildThreadFromSummary = (source: any = {}) =>
+  [
+    (source.q || source.question) && {
+      id: `${source.id || source.projectId || "restored"}-q`,
+      role: "user",
+      text: source.q || source.question,
+    },
+    (source.a || source.answer || source.summary || source.analysis) && {
+      id: `${source.id || source.projectId || "restored"}-a`,
+      role: "ai",
+      text: source.a || source.answer || source.summary || source.analysis,
+    },
+  ].filter(Boolean);
+
+const getStoredThread = (project: any, conversation: any) => {
+  const thread = pickFirstArray(
+    project?.thread,
+    project?.messages,
+    project?.chat,
+    project?.conversation,
+    project?.conversationThread,
+    project?.history,
+    conversation?.thread,
+    conversation?.messages,
+    conversation?.chat,
+    conversation?.conversation,
+    conversation?.conversationThread,
+    conversation?.history,
+  );
+  if (thread.length > 0) return thread;
+  return buildThreadFromSummary(project).length > 0
+    ? buildThreadFromSummary(project)
+    : buildThreadFromSummary(conversation);
 };
 
 function Home() {
@@ -324,6 +364,9 @@ function Home() {
       return;
     }
     setRestoredData(projectData);
+    setAnalysisSessionKey(
+      `analysis-${projectData?.projectId || projectData?.id || projectData?.inviteCode || Date.now()}`,
+    );
     navigateToView(VIEW.ANALYSIS);
   };
 
@@ -341,14 +384,13 @@ function Home() {
     const project = Array.isArray(projects)
       ? projects.find(
           (item) =>
-            item.id === conversation.projectId || item.id === conversation.id,
+            item.id === conversation.projectId ||
+            item.id === conversation.id ||
+            item.conversationId === conversation.conversationId ||
+            item.inviteCode === conversation.inviteCode,
         )
       : null;
-    const thread = Array.isArray(project?.thread)
-      ? project.thread
-      : Array.isArray(conversation.thread)
-        ? conversation.thread
-        : [];
+    const thread = getStoredThread(project, conversation);
     const lastUserMessage = [...thread]
       .reverse()
       .find((item) => item.role === "user");
@@ -370,8 +412,16 @@ function Home() {
         `"${conversation.title}" 프로젝트로 저장된 최근 분석 대화입니다.`,
       projectTitle: project?.title || conversation.title,
       inviteCode: project?.inviteCode || conversation.inviteCode,
-      files: project?.files || conversation.files || [],
+      files: pickFirstArray(
+        project?.files,
+        project?.sourceFiles,
+        project?.uploadedFiles,
+        conversation.files,
+        conversation.sourceFiles,
+        conversation.uploadedFiles,
+      ),
       thread,
+      visuals: pickFirstArray(project?.visuals, conversation.visuals),
     });
     setAnalysisSessionKey(
       `analysis-${conversation.conversationId || conversation.id || conversation.projectId || Date.now()}`,
@@ -383,9 +433,20 @@ function Home() {
     event?.stopPropagation();
     if (!window.confirm("이 최근 대화 기록을 삭제하시겠습니까?")) return;
 
-    const updatedRecents = recentConversations.filter((item: any) => item.id !== id);
+    const deletedRecent = recentConversations.find(
+      (item: any) => item.id === id || item.conversationId === id || item.projectId === id,
+    );
+    const deletedIds = [
+      id,
+      deletedRecent?.id,
+      deletedRecent?.conversationId,
+      deletedRecent?.projectId,
+      deletedRecent?.inviteCode,
+    ].filter(Boolean);
+    const updatedRecents = recentConversations.filter((item: any) => !recordMatchesAnyId(item, deletedIds));
     setRecentConversations(updatedRecents);
     writeJson(getRecentConversationsKey(), updatedRecents);
+    clearActiveAnalysisSessionIfMatched(deletedIds);
 
     const activeId =
       restoredData?.conversationId ||
@@ -393,7 +454,7 @@ function Home() {
       restoredData?.id;
       
     // 💡 [오류 수정] 활성화된 채팅 삭제 시 VIEW.MAIN으로 정상 튕겨나가도록 수정
-    if (activeId === id) {
+    if (recordMatchesAnyId(restoredData, deletedIds) || deletedIds.includes(activeId)) {
       setRestoredData(null);
       setAnalysisSessionKey(`analysis-${Date.now()}`);
       if (viewMode === VIEW.ANALYSIS) {

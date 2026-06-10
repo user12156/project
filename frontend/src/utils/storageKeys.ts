@@ -8,6 +8,7 @@
 export const BASE_PROJECTS_KEY = 'papermate.projects.v1';
 export const BASE_RECENT_CONVERSATIONS_KEY = 'papermate.recentConversations.v1';
 export const BASE_SHARE_ROOM_KEY = 'papermate.shareRoom.v1';
+export const ACTIVE_ANALYSIS_SESSION_KEY = 'papermate.activeAnalysisSession.v1';
 export const SHARED_PROJECTS_KEY = 'papermate.sharedProjects.v1';
 export const SHARED_ROOM_PREFIX = 'papermate.sharedRoom.v1';
 
@@ -19,6 +20,23 @@ const isQuotaExceededError = (error) =>
 // 초대코드 검색용 전역 인덱스에는 프로젝트 원본 전체를 넣지 않습니다.
 // 이미지 dataUrl 같은 큰 값은 localStorage 한도를 빨리 넘기므로, 공유 검색과 카드 복원에 필요한 가벼운 정보만 남깁니다.
 export const normalizeInviteCode = (code = '') => String(code || '').trim();
+
+const compactVisualItems = (items) =>
+  Array.isArray(items)
+    ? items.slice(0, 12).map((item) => ({
+        id: item.id,
+        filename: item.filename,
+        kind: item.kind,
+        name: item.name,
+        source: item.source,
+        width: item.width,
+        height: item.height,
+        mimeType: item.mimeType,
+        ocrText: item.ocrText,
+        previewText: item.previewText,
+        dataUrl: item.dataUrl,
+      }))
+    : undefined;
 
 export const compactProjectForSharedIndex = (project) => ({
   id: project.id,
@@ -48,6 +66,7 @@ export const compactProjectForSharedIndex = (project) => ({
         theme: visual.theme,
         details: Array.isArray(visual.details) ? visual.details.slice(0, 8) : [],
         rows: Array.isArray(visual.rows) ? visual.rows.slice(0, 8) : undefined,
+        items: compactVisualItems(visual.items),
         date: visual.date,
         projectTitle: visual.projectTitle,
       }))
@@ -67,6 +86,7 @@ export const compactProjectForSharedIndex = (project) => ({
         data: Array.isArray(item.data) ? item.data.slice(0, 80) : undefined,
         theme: item.theme,
         rows: Array.isArray(item.rows) ? item.rows.slice(0, 8) : undefined,
+        items: compactVisualItems(item.items),
       }))
     : [],
   discussionImages: Array.isArray(project.discussionImages)
@@ -130,6 +150,7 @@ export const scopedKey = (baseKey) => `${baseKey}.${getUserScope()}`;
 export const getProjectsKey = () => scopedKey(BASE_PROJECTS_KEY);
 export const getRecentConversationsKey = () => scopedKey(BASE_RECENT_CONVERSATIONS_KEY);
 export const getShareRoomKey = () => scopedKey(BASE_SHARE_ROOM_KEY);
+export const getActiveAnalysisSessionKey = () => scopedKey(ACTIVE_ANALYSIS_SESSION_KEY);
 
 // 공유방 데이터는 계정별이 아니라 초대코드별 키를 사용합니다.
 // 그래야 다른 아이디로 로그인해도 같은 초대코드 방의 참여자/코멘트를 같이 볼 수 있습니다.
@@ -159,6 +180,30 @@ export const writeJson = (key, value) => {
       return false;
     }
   }
+  window.dispatchEvent(new CustomEvent('papermate-storage-updated', { detail: { key } }));
+  return true;
+};
+
+export const recordMatchesAnyId = (record, ids = []) => {
+  const normalizedIds = new Set(
+    (Array.isArray(ids) ? ids : [ids]).map((id) => String(id || '').trim()).filter(Boolean)
+  );
+  if (normalizedIds.size === 0 || !record) return false;
+
+  return [
+    record.id,
+    record.projectId,
+    record.conversationId,
+    record.inviteCode,
+  ].some((value) => normalizedIds.has(String(value || '').trim()));
+};
+
+export const clearActiveAnalysisSessionIfMatched = (ids = []) => {
+  const key = getActiveAnalysisSessionKey();
+  const activeSession = readJson(key, null);
+  if (!recordMatchesAnyId(activeSession, ids)) return false;
+
+  localStorage.removeItem(key);
   window.dispatchEvent(new CustomEvent('papermate-storage-updated', { detail: { key } }));
   return true;
 };

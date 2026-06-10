@@ -1,3 +1,4 @@
+# 서비스: 차트/그래프 시각화를 위한 데이터 정규화와 템플릿 구성을 담당합니다.
 import json
 import re
 from typing import Any

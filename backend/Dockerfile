@@ -5,12 +5,13 @@ ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
-# OCR 이미지 분석과 HWP/HWPX 파싱 기반 PDF 미리보기를 위해 Tesseract와 한글 폰트를 포함합니다.
+# OCR 이미지 분석을 위해 Tesseract를 포함합니다.
+# AI 연결 담당자가 LLM만 붙여도 기본 문서 추출/이미지 OCR은 같은 컨테이너에서 동작합니다.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends build-essential tesseract-ocr tesseract-ocr-kor fonts-noto-cjk \
+    && apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-kor fonts-noto-cjk \
     && rm -rf /var/lib/apt/lists/*
 
-COPY backend/requirements.docker.txt ./requirements.txt
+COPY backend/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY backend/ ./

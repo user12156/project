@@ -7,16 +7,18 @@ export const MainLayout = styled.div`
   flex: 1;
   overflow: hidden;
   height: 100%;
+  min-width: 0;
 
   @media (max-width: 900px) {
     flex-direction: column;
-    overflow: auto;
+    overflow-y: auto;
+    overflow-x: hidden;
   }
 `;
 
-export const VisualPanel = styled.div`
-  flex: 0 0 clamp(420px, 46%, 720px);
-  min-width: 420px;
+export const VisualPanel = styled.div<{ $libraryCollapsed?: boolean }>`
+  flex: 0 0 60%;
+  min-width: 0;
   border-right: 1px solid #e2e8f0;
   padding: 12px;
   overflow: hidden;
@@ -33,7 +35,10 @@ export const VisualPanel = styled.div`
 
   .compare-shell {
     display: grid;
-    grid-template-columns: minmax(260px, var(--source-pane-width, 58%)) 10px minmax(220px, 1fr);
+    grid-template-columns: ${(props) =>
+      props.$libraryCollapsed
+        ? 'minmax(0, 1fr)'
+        : 'minmax(360px, var(--source-pane-width, 72%)) 10px minmax(220px, 1fr)'};
     gap: 8px;
     min-height: 0;
     height: 100%;
@@ -56,12 +61,14 @@ export const VisualPanel = styled.div`
   }
 
   .panel-head {
-    min-height: 68px;
-    padding: 12px 14px;
+    min-height: 48px;
+    padding: 8px 10px 8px 12px;
     border-bottom: 1px solid #e2e8f0;
     background: #ffffff;
     display: flex;
     align-items: center;
+    justify-content: space-between;
+    gap: 10px;
   }
 
   .title {
@@ -71,11 +78,39 @@ export const VisualPanel = styled.div`
   }
 
   .hint {
-    margin: -4px 0 4px 0;
+    margin: 2px 0 0 0;
     color: #64748b;
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 650;
-    line-height: 1.45;
+    line-height: 1.35;
+  }
+
+  .library-toggle {
+    min-width: 78px;
+    height: 32px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    background: #ffffff;
+    color: #334155;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    font-size: 12px;
+    font-weight: 850;
+    cursor: pointer;
+    flex: 0 0 auto;
+  }
+
+  .library-toggle:hover {
+    border-color: #0ea5a4;
+    color: #0f766e;
+    background: #f0fdfa;
+  }
+
+  .library-toggle svg {
+    width: 15px;
+    height: 15px;
   }
 
   .pane-resizer {
@@ -86,6 +121,11 @@ export const VisualPanel = styled.div`
     background: transparent;
     touch-action: none;
     z-index: 2;
+  }
+
+  .library-collapsed .pane-resizer,
+  .library-collapsed .visual-library {
+    display: none;
   }
 
   .pane-resizer::before {
@@ -118,34 +158,37 @@ export const VisualPanel = styled.div`
 
   .source-file-list {
     display: flex;
-    flex-direction: column;
+    flex-wrap: nowrap;
     gap: 6px;
-    padding: 8px;
+    padding: 8px 10px 10px;
     border-bottom: 1px solid #e2e8f0;
     flex: 0 0 auto;
-    max-height: 118px;
-    overflow-y: auto;
+    overflow-x: auto;
+    overflow-y: hidden;
     background: #f8fafc;
+    scroll-snap-type: x proximity;
     scrollbar-gutter: stable;
+    scrollbar-width: thin;
   }
 
   .source-file-item {
-    width: 100%;
-    min-width: 0;
-    min-height: 34px;
+    flex: 0 0 calc((100% - 12px) / 3);
+    min-width: 92px;
+    max-width: calc((100% - 12px) / 3);
+    min-height: 36px;
     border: 1px solid #cbd5e1;
-    border-radius: 8px;
+    border-radius: 7px;
     background: #ffffff;
     color: #475569;
-    padding: 0 6px 0 10px;
-    font-size: 12px;
+    padding: 0 7px;
+    font-size: 11px;
     font-weight: 800;
     cursor: pointer;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 5px;
     text-align: left;
-    cursor: pointer;
+    scroll-snap-align: start;
     transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
   }
 
@@ -157,8 +200,8 @@ export const VisualPanel = styled.div`
   }
 
   .source-file-item > svg {
-    width: 15px;
-    height: 15px;
+    width: 13px;
+    height: 13px;
     color: #0ea5a4;
     flex: 0 0 auto;
   }
@@ -167,8 +210,12 @@ export const VisualPanel = styled.div`
     min-width: 0;
     flex: 1;
     overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    line-height: 1.25;
+    white-space: normal;
+    word-break: break-all;
   }
 
   .source-preview {
@@ -181,7 +228,7 @@ export const VisualPanel = styled.div`
   .source-frame {
     width: 100%;
     height: 100%;
-    min-height: 420px;
+    min-height: 620px;
     border: 0;
     background: #ffffff;
   }
@@ -207,7 +254,7 @@ export const VisualPanel = styled.div`
   }
 
   .source-empty {
-    min-height: 220px;
+    min-height: 360px;
     height: 100%;
     display: flex;
     flex-direction: column;
@@ -240,6 +287,7 @@ export const VisualPanel = styled.div`
     display: flex;
     flex-direction: column;
     gap: 10px;
+    padding: 10px;
   }
 
   .action-btn {
@@ -343,14 +391,35 @@ export const VisualPanel = styled.div`
     min-width: 0;
     border-right: none;
     border-bottom: 1px solid #e2e8f0;
-    max-height: 44vh;
+    max-height: none;
+    min-height: 68vh;
+    overflow: visible;
 
     .compare-shell {
       grid-template-columns: 1fr;
+      grid-auto-rows: auto;
+      height: auto;
+      min-height: 68vh;
     }
 
     .pane-resizer {
       display: none;
+    }
+
+    .source-pane {
+      min-height: 68vh;
+    }
+
+    .source-frame {
+      min-height: 58vh;
+    }
+
+    .source-empty {
+      min-height: 48vh;
+    }
+
+    .visual-library {
+      max-height: 42vh;
     }
   }
 `;
@@ -450,7 +519,7 @@ export const VisualArtifact = styled.div`
     .artifact-body {
       flex: 1;
       min-height: 0;
-      overflow: hidden;
+      overflow: auto;
     }
 
     .dynamic-visualizer {
@@ -725,6 +794,21 @@ export const InviteCodePill = styled.button`
   &:hover {
     border-color: #0ea5a4;
   }
+
+  @media (max-width: 680px) {
+    width: 100%;
+    flex: 1 1 100%;
+
+    span {
+      white-space: nowrap;
+    }
+
+    strong {
+      flex: 1;
+      min-width: 0;
+      text-align: center;
+    }
+  }
 `;
 
 export const SaveInlinePanel = styled.div`
@@ -786,10 +870,13 @@ export const PreviewModalContainer = styled.div`
   width: 90%;
   max-width: 1120px;
   height: min(760px, calc(100vh - 48px));
+  max-height: calc(100vh - 48px);
   background: #ffffff;
   border-radius: 12px;
   box-shadow: 0 24px 70px rgba(15, 23, 42, 0.2);
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
   
   /* 뷰어 내부 스타일 조정 (기존 VisualArtifact 디자인을 상속하되 더 넓게) */
   .artifact-head {

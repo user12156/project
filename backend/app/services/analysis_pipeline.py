@@ -1,3 +1,4 @@
+# 서비스: 문서 분석 전체 파이프라인을 조율하고 로컬/LLM 분석, grounding 검증, fallback 선택을 담당합니다.
 """문서 분석 서비스들을 하나의 흐름으로 묶는 파이프라인입니다.
 
 라우터는 HTTP 요청/응답만 처리하고, 이 파일은 로컬 분석, LLM 호출,
@@ -8,9 +9,14 @@ import json
 import re
 
 from ..core.config import settings
-from .document_analysis import build_analysis_answer
-from .grounding import validate_grounding
-from .llm_analysis import analyze_with_llm
+from .fallback_analysis import (
+    build_analysis_answer,
+    build_concise_fallback_answer,
+    build_empty_context_answer,
+)
+from .analysis.grounding import validate_grounding
+from .llm.service import analyze_with_llm
+from .translation import translate_analysis_payload
 
 
 def _is_visual_request(question: str) -> bool:
@@ -111,52 +117,6 @@ def _validate_visual_config(config: dict, extracted_docs: list[dict]) -> bool:
     return bool(numbers) and all(_compact_number(number) in evidence for number in numbers)
 
 
-def _build_birth_trend_visual(extracted_docs: list[dict]) -> dict | None:
-    source = "\n".join(doc.get("text", "") for doc in extracted_docs)
-    compact = re.sub(r"\s+", " ", source)
-    marker = compact.find("전국 출생아 수 및 증감률")
-    if marker < 0:
-        marker = compact.find("전국 월별 출생 추이")
-    if marker < 0:
-        return None
-
-    window = compact[marker : marker + 1200]
-    if "25,200" not in window or "22,898" not in window:
-        return None
-
-    return {
-        "type": "chart",
-        "kind": "chart",
-        "chartType": "bar",
-        "title": "전국 출생아 수",
-        "text": "업로드 문서의 [표 1] 전국 출생아 수 및 증감률에서 직접 확인되는 월별 출생아 수만 사용했습니다. 원본 [그림 1]의 이미지 데이터가 텍스트로 추출되지 않은 경우 임의로 보간하지 않습니다.",
-        "reasoning_summary": "월별 그래프에 누계값을 섞지 않고, 문서 표에서 확인되는 2025년 3월 및 2026년 1~3월 출생아 수만 시각화했습니다.",
-        "xAxisKey": "period",
-        "series": [
-            {"dataKey": "births", "name": "출생아 수(명)", "color": "#0ea5a4", "yAxisId": "left"},
-        ],
-        "data": [
-            {"period": "2025년 3월", "births": 21112},
-            {"period": "2026년 1월", "births": 26916},
-            {"period": "2026년 2월", "births": 22898},
-            {"period": "2026년 3월", "births": 25200},
-        ],
-        "theme": {
-            "headerBackground": "#0f766e",
-            "headerTextColor": "#ffffff",
-            "cellBackground": "#f8fafc",
-            "cellTextColor": "#334155",
-            "borderColor": "#cbd5e1",
-        },
-    }
-
-
-def _visual_fallback(question: str, extracted_docs: list[dict]) -> dict | None:
-    if "출생" in question and ("월별" in question or "추이" in question):
-        return _build_birth_trend_visual(extracted_docs)
-    return None
-
-
 def _clean_evidence_text(text: str) -> str:
     return " ".join(str(text or "").split())
 
@@ -221,68 +181,41 @@ def _merge_llm_answer_with_evidence(question: str, llm_answer: str, fallback_ans
     return "\n\n".join(section for section in sections if section.strip())
 
 
-def _concise_grounded_answer(question: str, fallback_answer: dict, fallback_reason: str | None = None) -> str:
-    relevant_chunks = fallback_answer.get("relevant_chunks") or []
-    intent = fallback_answer.get("intent") or "general"
-    evidence_blob = " ".join(str(chunk.get("text", "")) for chunk in relevant_chunks[:4])
-    has_ai_prediction_context = any(
-        token in f"{question} {evidence_blob}"
-        for token in ("PT-AI", "AGI", "EEN", "TOP100", "HLMI")
-    )
-    sections = [
-        _assistant_intro(question, intent),
-        fallback_reason or "OpenAI 키가 없거나 호출하지 못해, 현재 문서에서 확인되는 근거만 로컬로 정리했습니다.",
-    ]
-
-    if has_ai_prediction_context and (
-        intent == "compare" or any(word in (question or "") for word in ("차이", "비교", "배경", "이유"))
-    ):
-        sections.append(
-            "\n[요약]\n"
-            "- 예측 차이는 네 집단의 구성과 관점 차이에서 비롯된 것으로 볼 수 있습니다.\n"
-            "- PT-AI는 철학/이론 중심, AGI는 기술적 인공지능 연구 중심, EEN은 AI 분야 연구자 조직, TOP100은 인용 수 기준의 저자 집단입니다.\n"
-            "- 따라서 같은 HLMI 도입 시점 예측이라도 이론적 관점, 기술 구현 관점, 연구자 네트워크, 인용 영향력 중심 관점이 다르게 반영됩니다."
-        )
-    else:
-        summary = fallback_answer.get("summary", "")
-        if summary:
-            sections.append(f"\n[요약]\n{_clean_evidence_text(summary)[:900]}")
-
-    metrics = fallback_answer.get("metrics") or []
-    if metrics:
-        sections.append("\n[수치 후보]\n" + "\n".join(f"- {metric}" for metric in metrics[:8]))
-
-    if relevant_chunks:
-        evidence_lines = []
-        for chunk in relevant_chunks[:3]:
-            filename = chunk.get("filename", "문서")
-            source_label = chunk.get("source_label") or f"Chunk {chunk.get('chunk_index', '?')}"
-            evidence = _clean_evidence_text(chunk.get("text", ""))[:420]
-            evidence_lines.append(f"- {filename} {source_label}: {evidence}")
-        sections.append("\n[근거]\n" + "\n".join(evidence_lines))
-
-    return "\n".join(section for section in sections if section.strip())
+def _with_korean_answer(payload: dict) -> dict:
+    return translate_analysis_payload(payload)
 
 
-def _empty_context_answer(question: str, fallback_answer: dict, has_uploaded_files: bool, filenames: list[str]) -> str:
-    if has_uploaded_files:
-        file_names = ", ".join(filenames)
-        return (
-            f"업로드하신 파일({file_names})에서 텍스트를 추출할 수 없습니다.\n\n"
-            "[확인 요청]\n"
-            "- 텍스트가 포함되지 않은 스캔본(이미지)이거나, 아직 지원되지 않는 형식일 수 있습니다.\n"
-            "- 텍스트 복사가 가능한 PDF나 TXT, CSV 등을 업로드해주세요."
-        )
+def _resolve_llm_provider_and_keys(
+    provider: str,
+    openai_api_key: str | None,
+    google_api_key: str | None,
+) -> tuple[str, str, str, bool]:
+    selected = (provider or "auto").strip().lower()
+    if selected not in {"auto", "gemini", "google", "openai"}:
+        selected = "auto"
 
-    return (
-        f"{_assistant_intro(question, fallback_answer.get('intent'))}\n\n"
-        "현재 분석할 문서 본문이 없습니다.\n\n"
-        "[필요한 자료]\n"
-        "- 질문에 맞는 PDF, HWPX, HWP, TXT, CSV, 이미지 OCR 자료를 먼저 업로드해주세요.\n"
-        "- \"40대 여성 이동 동향\" 같은 질문은 연령, 성별, 지역, 기간이 포함된 원본 표나 문서가 있어야 근거 기반으로 답할 수 있습니다.\n\n"
-        "[가능한 작업]\n"
-        "- 문서를 업로드하면 핵심 요약, 중요 문장 발췌, 수치 후보, 표/그래프 생성을 진행합니다."
-    )
+    request_openai = (openai_api_key or "").strip()
+    request_google = (google_api_key or "").strip()
+    env_openai = settings.openai_api_key
+    env_google = settings.gemini_api_key or settings.google_api_key
+
+    if selected == "openai":
+        key_source = "request" if request_openai else "env" if env_openai else "none"
+        return "openai", request_openai or env_openai, key_source, key_source != "none"
+
+    if selected in {"gemini", "google"}:
+        key_source = "request" if request_google else "env" if env_google else "none"
+        return "gemini", request_google or env_google, key_source, key_source != "none"
+
+    if request_openai:
+        return "openai", request_openai, "request", True
+    if request_google:
+        return "gemini", request_google, "request", True
+    if env_openai:
+        return "openai", env_openai, "env", True
+    if env_google:
+        return "gemini", env_google, "env", True
+    return "openai", "", "none", False
 
 
 def run_analysis_pipeline(
@@ -290,7 +223,9 @@ def run_analysis_pipeline(
     question: str,
     extracted_docs: list[dict],
     uploaded_filenames: list[str] | None = None,
+    llm_provider: str = "gemini",
     openai_api_key: str | None = None,
+    google_api_key: str | None = None,
     analysis_text: str = "",
 ) -> dict:
     """분석 서비스의 단일 진입점입니다."""
@@ -299,17 +234,16 @@ def run_analysis_pipeline(
     fallback_answer = build_analysis_answer(question, extracted_docs)
     has_grounded_docs = any(str(doc.get("text", "")).strip() for doc in extracted_docs)
     is_visual_request = _is_visual_request(question)
-    deterministic_visual = _visual_fallback(question, extracted_docs) if is_visual_request else None
-
-    request_key = (openai_api_key or "").strip()
-    env_key = settings.openai_api_key
-    llm_key_source = "request" if request_key else "env" if env_key else "none"
-    llm_key_received = llm_key_source != "none"
+    selected_provider, resolved_key, llm_key_source, llm_key_received = _resolve_llm_provider_and_keys(
+        llm_provider,
+        openai_api_key,
+        google_api_key,
+    )
 
     if not has_grounded_docs:
-        return {
+        return _with_korean_answer({
             **fallback_answer,
-            "answer": _empty_context_answer(
+            "answer": build_empty_context_answer(
                 question,
                 fallback_answer,
                 bool(uploaded_filenames),
@@ -322,49 +256,35 @@ def run_analysis_pipeline(
             "llm_key_received": False,
             "llm_key_source": None,
             "suggested_questions": [],
-        }
+        })
 
-    if deterministic_visual:
-        return {
+    if not llm_key_received:
+        return _with_korean_answer({
             **fallback_answer,
-            "answer": json.dumps(deterministic_visual, ensure_ascii=False),
+            "answer": build_concise_fallback_answer(question, fallback_answer),
             "llm_used": False,
-            "provider": "openai",
+            "provider": selected_provider,
             "model": None,
             "llm_error": None,
-            "llm_key_received": llm_key_received,
-            "llm_key_source": llm_key_source,
+            "llm_key_received": False,
+            "llm_key_source": "none",
             "suggested_questions": [],
-        }
+        })
 
     llm_answer = analyze_with_llm(
         question,
         extracted_docs,
-        openai_api_key=request_key or None,
+        provider=selected_provider,
+        openai_api_key=resolved_key if selected_provider == "openai" else None,
+        google_api_key=resolved_key if selected_provider == "gemini" else None,
         analysis_text=analysis_text,
         relevant_chunks=fallback_answer.get("relevant_chunks", []),
     )
 
     if not llm_answer.get("llm_used"):
-        if deterministic_visual:
-            return {
-                **fallback_answer,
-                "answer": json.dumps(deterministic_visual, ensure_ascii=False),
-                "llm_used": False,
-                "provider": llm_answer.get("provider"),
-                "model": llm_answer.get("model"),
-                "llm_error": llm_answer.get("llm_error"),
-                "llm_key_received": llm_key_received,
-                "llm_key_source": llm_key_source,
-                "suggested_questions": llm_answer.get("suggested_questions", []),
-            }
-        return {
+        return _with_korean_answer({
             **fallback_answer,
-            "answer": _concise_grounded_answer(
-                question,
-                fallback_answer,
-                llm_answer.get("llm_error") or "OpenAI 호출이 완료되지 않아 현재 문서에서 확인되는 근거만 로컬로 정리했습니다.",
-            ),
+            "answer": build_concise_fallback_answer(question, fallback_answer),
             "llm_used": False,
             "provider": llm_answer.get("provider"),
             "model": llm_answer.get("model"),
@@ -372,7 +292,7 @@ def run_analysis_pipeline(
             "llm_key_received": llm_key_received,
             "llm_key_source": llm_key_source,
             "suggested_questions": llm_answer.get("suggested_questions", []),
-        }
+        })
 
     visual_config = _extract_json_object(llm_answer["answer"]) if is_visual_request else None
     if visual_config and _validate_visual_config(visual_config, extracted_docs):
@@ -399,33 +319,17 @@ def run_analysis_pipeline(
         fallback_answer.get("metrics", []),
     )
     if not grounding.get("passed"):
-        if deterministic_visual:
-            return {
-                **fallback_answer,
-                "answer": json.dumps(deterministic_visual, ensure_ascii=False),
-                "llm_used": False,
-                "provider": llm_answer.get("provider"),
-                "model": llm_answer.get("model"),
-                "llm_error": f"Visual grounding fallback used: {grounding.get('reason')}",
-                "llm_key_received": llm_key_received,
-                "llm_key_source": llm_key_source,
-                "suggested_questions": llm_answer.get("suggested_questions", []),
-            }
-        return {
+        return _with_korean_answer({
             **fallback_answer,
-            "answer": _concise_grounded_answer(
-                question,
-                fallback_answer,
-                "OpenAI 답변에 문서 근거와 맞지 않는 내용이 있어, 현재 문서에서 확인되는 근거만 로컬로 정리했습니다.",
-            ),
-            "llm_used": False,
+            "answer": _merge_llm_answer_with_evidence(question, llm_answer["answer"], fallback_answer),
+            "llm_used": True,
             "provider": llm_answer.get("provider"),
             "model": llm_answer.get("model"),
-            "llm_error": "OpenAI 답변에 문서 근거와 맞지 않는 내용이 있어 로컬 근거 답변으로 전환했습니다.",
+            "llm_error": "PaperMate가 문서 근거 점검에서 일부 낮은 일치도를 감지했습니다. 답변 아래 근거 구간을 함께 확인해주세요.",
             "llm_key_received": llm_key_received,
             "llm_key_source": llm_key_source,
             "suggested_questions": llm_answer.get("suggested_questions", []),
-        }
+        })
 
     if visual_config:
         return {
@@ -444,7 +348,7 @@ def run_analysis_pipeline(
             "suggested_questions": llm_answer.get("suggested_questions", []),
         }
 
-    return {
+    return _with_korean_answer({
         **fallback_answer,
         "answer": _merge_llm_answer_with_evidence(question, llm_answer["answer"], fallback_answer),
         "keywords": fallback_answer.get("keywords", []) or llm_answer.get("keywords", []),
@@ -458,4 +362,4 @@ def run_analysis_pipeline(
         "provider": llm_answer.get("provider"),
         "model": llm_answer.get("model"),
         "suggested_questions": llm_answer.get("suggested_questions", []),
-    }
+    })

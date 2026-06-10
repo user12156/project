@@ -5,12 +5,13 @@ import styled from 'styled-components';
 /* Analysis 페이지 전용 스타일 모음입니다.
    페이지 컴포넌트에는 화면 흐름과 이벤트 로직만 남기기 위해 styled-components를 이 파일로 분리했습니다. */
 export const Container = styled.div`
-  display: flex; width: 100%; height: 100vh; background: #ffffff; box-sizing: border-box;
+  display: flex; width: 100%; height: 100dvh; background: #ffffff; box-sizing: border-box;
+  overflow: hidden;
 
   @media (max-width: 900px) {
     flex-direction: column;
     height: auto;
-    min-height: 100vh;
+    min-height: 100dvh;
     overflow-y: auto;
   }
 `;
@@ -144,16 +145,22 @@ export const LeftUploadPanel = styled.div`
 `;
 
 export const MainQAEngine = styled.div`
-  flex: 1; display: flex; flex-direction: column; height: 100vh; background: #ffffff;
+  flex: 0 0 40%;
+  min-width: 360px;
+  display: flex; flex-direction: column; height: 100dvh; background: #ffffff;
+  min-height: 0;
 
   @media (max-width: 900px) {
+    flex: none;
+    width: 100%;
+    min-width: 0;
     height: auto;
-    min-height: 70vh;
+    min-height: 72vh;
   }
 `;
 
 export const TopMenuBar = styled.div`
-  padding: 18px 32px;                   /* 💡 위아래 여백을 주어 타이틀바 뼈대 안정감 구축 */
+  padding: 14px 22px;
   border-bottom: 1px solid #e2e8f0;     /* 💡 라인 컬러 통일 (#f1f5f9 -> #e2e8f0) */
   display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;
   
@@ -271,7 +278,7 @@ export const InviteCodeBadge = styled.div`
 `;
 
 export const StreamMessageArea = styled.div`
-  flex: 1; padding: 40px 60px;          /* 💡 좌우 여백을 60px로 넓혀서 논문 읽을 때 시야가 답답하지 않게 가로폭 확장 */
+  flex: 1; padding: 28px 24px;
   overflow-y: auto; display: flex; flex-direction: column; gap: 28px;
   position: relative;
 
@@ -386,7 +393,8 @@ export const StreamMessageArea = styled.div`
   }
 
   @media (max-width: 900px) {
-    padding: 28px 32px;
+    min-height: 48vh;
+    padding: 24px 22px;
 
     .question-timeline {
       top: auto;
@@ -696,7 +704,7 @@ export const LoadingSection = styled.div`
 `;
 
 export const BottomPromptInput = styled.div`
-  padding: 24px 40px;                   /* 💡 본문 폭(60px)에 자연스럽게 이어지도록 여백 밸런스 상향 */
+  padding: 16px 18px;
   border-top: 1px solid #e2e8f0; 
   display: flex; flex-direction: column; gap: 8px; align-items: stretch;
 
@@ -778,6 +786,26 @@ export const BottomPromptInput = styled.div`
       font-size: 14px; font-weight: 600; outline: none; 
       color: #1e293b;
       &::placeholder { color: #94a3b8; }
+    }
+
+    .provider-select {
+      flex: 0 0 auto;
+      max-width: 92px;
+      height: 34px;
+      margin: 0 8px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      background: #f8fafc;
+      color: #334155;
+      font-size: 12px;
+      font-weight: 800;
+      outline: none;
+      cursor: pointer;
+
+      &:focus {
+        border-color: #0ea5a4;
+        background: #ffffff;
+      }
     }
 
     button {

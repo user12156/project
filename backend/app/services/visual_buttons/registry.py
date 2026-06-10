@@ -1,4 +1,4 @@
-# 초보자 안내: 프로젝트 동작에 필요한 설정 또는 보조 코드를 담은 파일입니다.
+"""Visualization creator registry."""
 
 from .graph_visual import create_graph_visual
 from .image_visual import create_image_visual

@@ -1,16 +1,10 @@
 # 초보자 안내: 문서 파일 업로드와 분석 요청을 처리하는 API 라우터입니다.
 
-import hashlib
-from collections import OrderedDict
-from pathlib import Path
-from urllib.parse import quote
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
-from fastapi import APIRouter, File, Form, HTTPException, Response, UploadFile
-
-from ..core.uploads import read_upload_content, validate_upload_count
+from app.core.uploads import read_upload_content, validate_upload_count
 from ..services.analysis_pipeline import run_analysis_pipeline
-from ..services.document_conversion import render_text_preview_pdf
-from ..services.document_analysis import extract_file_document
+from ..services.document_processing import extract_file_document
 from models.schemas import AnalysisResponse
 
 
@@ -18,73 +12,6 @@ from models.schemas import AnalysisResponse
 router = APIRouter(prefix="/api/analysis", tags=["analysis"])
 
 DOCUMENT_SESSION_CACHE: dict[str, list[dict]] = {}
-DOCUMENT_CACHE_LIMIT = 32
-DOCUMENT_EXTRACT_CACHE: OrderedDict[str, dict] = OrderedDict()
-DOCUMENT_PREVIEW_CACHE: OrderedDict[str, bytes] = OrderedDict()
-
-
-def _document_cache_key(filename: str, content: bytes) -> str:
-    digest = hashlib.sha256(content).hexdigest()
-    return f"{Path(filename).name.lower()}:{len(content)}:{digest}"
-
-
-def _remember(cache: OrderedDict, key: str, value):
-    cache[key] = value
-    cache.move_to_end(key)
-    while len(cache) > DOCUMENT_CACHE_LIMIT:
-        cache.popitem(last=False)
-    return value
-
-
-def _get_extracted_document(filename: str, content: bytes) -> dict:
-    key = _document_cache_key(filename, content)
-    if key in DOCUMENT_EXTRACT_CACHE:
-        DOCUMENT_EXTRACT_CACHE.move_to_end(key)
-        return DOCUMENT_EXTRACT_CACHE[key]
-    return _remember(DOCUMENT_EXTRACT_CACHE, key, extract_file_document(filename, content))
-
-
-def _get_preview_pdf(filename: str, content: bytes) -> bytes:
-    key = _document_cache_key(filename, content)
-    if key in DOCUMENT_PREVIEW_CACHE:
-        DOCUMENT_PREVIEW_CACHE.move_to_end(key)
-        return DOCUMENT_PREVIEW_CACHE[key]
-
-    extracted_doc = _get_extracted_document(filename, content)
-    pdf_bytes = render_text_preview_pdf(
-        filename,
-        extracted_doc.get("preview_text") or extracted_doc.get("text", ""),
-        source_format=extracted_doc.get("format", "document"),
-    )
-    return _remember(DOCUMENT_PREVIEW_CACHE, key, pdf_bytes)
-
-
-@router.post("/preview")
-async def preview_document(file: UploadFile = File(...)):
-    content = await read_upload_content(file)
-    filename = file.filename or "document"
-    try:
-        pdf_bytes = _get_preview_pdf(filename, content)
-    except Exception as exc:
-        raise HTTPException(
-            status_code=422,
-            detail=f"이 문서를 PDF 미리보기로 생성하지 못했습니다: {exc}",
-        ) from exc
-
-    if not pdf_bytes:
-        raise HTTPException(
-            status_code=422,
-            detail="이 문서를 PDF 미리보기로 생성하지 못했습니다.",
-        )
-
-    output_name = Path(filename).stem + ".pdf"
-    ascii_fallback_name = "preview.pdf"
-    encoded_name = quote(output_name)
-    return Response(
-        content=pdf_bytes,
-        media_type="application/pdf",
-        headers={"Content-Disposition": f"inline; filename=\"{ascii_fallback_name}\"; filename*=UTF-8''{encoded_name}"},
-    )
 
 
 # 프론트엔드 Analysis.js의 analysisAPI.chat(question, files)가 호출하는 엔드포인트입니다.
@@ -95,7 +22,9 @@ async def preview_document(file: UploadFile = File(...)):
 async def analyze_chat(
     question: str = Form(""),
     conversation_id: str = Form(""),
+    llm_provider: str = Form("auto"),
     openai_api_key: str = Form(""),
+    google_api_key: str = Form(""),
     files: list[UploadFile] = File(default=[]),
     analysis_text: str = Form(""),
 ):
@@ -119,7 +48,7 @@ async def analyze_chat(
         # 파일 확장자에 따라 PDF/HWPX/DOCX/이미지/TXT 추출기가 선택됩니다.
         # 결과 text는 이후 기본 분석과 LLM 분석의 공통 입력이 됩니다.
         try:
-            extracted_doc = _get_extracted_document(upload.filename or "unknown", content)
+            extracted_doc = extract_file_document(upload.filename or "unknown", content)
         except Exception as exc:
             raise HTTPException(status_code=400, detail=f"{upload.filename or '파일'} 분석 중 오류가 발생했습니다: {exc}") from exc
 
@@ -142,22 +71,32 @@ async def analyze_chat(
     return run_analysis_pipeline(
         question=question,
         extracted_docs=extracted_docs,
-        uploaded_filenames=[upload.filename or "unknown" for upload in files],
+        uploaded_filenames=[upload.filename or "파일" for upload in files],
+        llm_provider=llm_provider,
         openai_api_key=openai_api_key.strip() or None,
+        google_api_key=google_api_key.strip() or None,
         analysis_text=analysis_text,
     )
 
 @router.post("/title")
 async def generate_title(
     question: str = Form(""),
+    llm_provider: str = Form("auto"),
     openai_api_key: str = Form(""),
+    google_api_key: str = Form(""),
     analysis_text: str = Form("")
 ):
-    from ..services.llm_analysis import generate_chat_title
+    selected_provider = (llm_provider or "auto").strip().lower()
+    if selected_provider not in {"auto", "gemini", "google", "openai"}:
+        selected_provider = "auto"
+    
+    from ..services.llm.title_generator import generate_chat_title
     
     title = generate_chat_title(
         question,
+        provider=selected_provider,
         openai_api_key=openai_api_key.strip() or None,
+        google_api_key=google_api_key.strip() or None,
         analysis_text=analysis_text.strip()
     )
     

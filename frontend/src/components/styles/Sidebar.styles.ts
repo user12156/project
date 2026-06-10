@@ -4,7 +4,7 @@ import styled from 'styled-components';
 
 export const SidebarContainer = styled.aside<{ $collapsed?: boolean }>`
   width: clamp(232px, 19vw, 280px);
-  height: 100vh;
+  height: 100dvh;
   background: linear-gradient(180deg, #d8f0d9 0%, #c8e6c9 52%, #bfe0c0 100%);
   border-right: 1px solid rgba(46, 125, 50, 0.14);
   display: flex;
@@ -19,6 +19,11 @@ export const SidebarContainer = styled.aside<{ $collapsed?: boolean }>`
 
   @media (min-width: 1440px) {
     padding: 28px 16px 18px;
+  }
+
+  @media (max-width: 900px) {
+    width: min(300px, 86vw);
+    box-shadow: 18px 0 44px rgba(15, 23, 42, 0.18);
   }
 `;
 

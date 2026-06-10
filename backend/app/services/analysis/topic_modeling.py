@@ -1,8 +1,10 @@
+# 서비스: 문서 주제 후보를 추출하며 로컬 토큰 기반과 필요 시 BERTopic 임베딩을 혼합합니다.
 import re
 from importlib import import_module
 from collections import Counter
 
-from ..core.config import settings
+from app.core.config import settings
+from app.services.embeddings.embedding_model import embedding_model
 
 
 # 문서 분석 결과의 [문서 주제 후보]를 만드는 서비스입니다.
@@ -131,14 +133,15 @@ def _bertopic_topics(units: list[str], limit: int) -> list[dict] | None:
 
     try:
         BERTopic = import_module("bertopic").BERTopic
-        SentenceTransformer = import_module("sentence_transformers").SentenceTransformer
     except Exception:
         return None
 
     try:
-        embedding_model = SentenceTransformer(settings.bert_grounding_model)
+        model = embedding_model()
+        if model is None:
+            return None
         topic_model = BERTopic(
-            embedding_model=embedding_model,
+            embedding_model=model,
             language="multilingual",
             nr_topics="auto",
             verbose=False,

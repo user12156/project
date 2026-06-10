@@ -20,12 +20,14 @@ import {
 } from './styles/Project.styles';
 import { DynamicVisualizer } from '../components/DynamicVisualizer';
 import {
+  clearActiveAnalysisSessionIfMatched,
   getProjectsKey,
   getRecentConversationsKey,
   getSharedRoomKey,
   getShareRoomKey,
   mergeProjectsIntoSharedIndex,
   readJson,
+  recordMatchesAnyId,
   SHARED_PROJECTS_KEY,
   upsertProjectByIdOrInvite,
   writeJson,
@@ -302,9 +304,82 @@ const asArray = (value) => (Array.isArray(value) ? value : []);
 const sanitizeProjects = (projects) =>
   asArray(projects).filter((project) => project && !legacyDummyProjectTitles.includes(project.title));
 
+const pickFirstArray = (...values) => values.find((value) => Array.isArray(value) && value.length > 0) || [];
+
+const buildThreadFromSummary = (source) => {
+  if (!source) return [];
+  return [
+    (source.q || source.question) && {
+      id: `${source.id || source.projectId || 'restored'}-q`,
+      role: 'user',
+      text: source.q || source.question,
+    },
+    (source.a || source.answer || source.summary || source.analysis) && {
+      id: `${source.id || source.projectId || 'restored'}-a`,
+      role: 'ai',
+      text: source.a || source.answer || source.summary || source.analysis,
+    },
+  ].filter(Boolean);
+};
+
+const findRecentConversationForProject = (project) => {
+  const recentConversations = readJson(getRecentConversationsKey(), []);
+  return asArray(recentConversations).find(
+    (item) =>
+      item.projectId === project.id ||
+      item.id === project.id ||
+      item.conversationId === project.id ||
+      item.inviteCode === project.inviteCode ||
+      (project.title && (item.title === project.title || item.projectTitle === project.title))
+  );
+};
+
+const getProjectThread = (project, matchedRecent = null) => {
+  const directThread = pickFirstArray(
+    project.thread,
+    project.messages,
+    project.chat,
+    project.conversation,
+    project.conversationThread,
+    project.history
+  );
+  if (directThread.length > 0) return directThread;
+
+  const recentThread = pickFirstArray(
+    matchedRecent?.thread,
+    matchedRecent?.messages,
+    matchedRecent?.chat,
+    matchedRecent?.conversation,
+    matchedRecent?.conversationThread,
+    matchedRecent?.history
+  );
+  if (recentThread.length > 0) return recentThread;
+
+  return buildThreadFromSummary(project).length > 0
+    ? buildThreadFromSummary(project)
+    : buildThreadFromSummary(matchedRecent);
+};
+
+const getProjectFiles = (project, matchedRecent = null) =>
+  pickFirstArray(
+    project.files,
+    project.sourceFiles,
+    project.uploadedFiles,
+    matchedRecent?.files,
+    matchedRecent?.sourceFiles,
+    matchedRecent?.uploadedFiles
+  );
+
 const normalizeProject = (project) => {
   const visuals = asArray(project.visuals).slice(0, MAX_VISUALS);
-  return { ...project, visuals, charts: visuals.length };
+  const matchedRecent = findRecentConversationForProject(project);
+  return {
+    ...project,
+    files: getProjectFiles(project, matchedRecent),
+    thread: getProjectThread(project, matchedRecent),
+    visuals,
+    charts: visuals.length,
+  };
 };
 
 const normalizeProjects = (projects) =>
@@ -316,8 +391,19 @@ const mergeProjectLists = (primaryProjects, fallbackProjects) => {
   const merged = [];
   asArray([...asArray(primaryProjects), ...asArray(fallbackProjects)]).forEach((project) => {
     if (!project?.id && !project?.inviteCode) return;
-    const exists = merged.some((item) => item.id === project.id || item.inviteCode === project.inviteCode);
-    if (!exists) merged.push(project);
+    const existingIndex = merged.findIndex((item) => item.id === project.id || item.inviteCode === project.inviteCode);
+    if (existingIndex < 0) {
+      merged.push(project);
+      return;
+    }
+    const existing = merged[existingIndex];
+    merged[existingIndex] = {
+      ...existing,
+      ...project,
+      files: getProjectFiles(existing).length ? getProjectFiles(existing) : getProjectFiles(project),
+      thread: getProjectThread(existing).length ? getProjectThread(existing) : getProjectThread(project),
+      visuals: asArray(existing.visuals).length ? existing.visuals : project.visuals,
+    };
   });
   return normalizeProjects(merged);
 };
@@ -351,6 +437,13 @@ const deleteProjectEverywhere = (projectId) => {
   const shareRoomKey = getShareRoomKey();
   const savedProjects = readJson(projectsKey, []);
   const deletedProject = Array.isArray(savedProjects) ? savedProjects.find((project) => project.id === projectId) : null;
+  const deletedIds = [
+    projectId,
+    deletedProject?.id,
+    deletedProject?.projectId,
+    deletedProject?.conversationId,
+    deletedProject?.inviteCode,
+  ].filter(Boolean);
 
   if (Array.isArray(savedProjects)) {
     writeJson(projectsKey, savedProjects.filter((project) => project.id !== projectId));
@@ -360,7 +453,7 @@ const deleteProjectEverywhere = (projectId) => {
   if (Array.isArray(sharedProjects)) {
     writeJson(
       SHARED_PROJECTS_KEY,
-      sharedProjects.filter((project) => project.id !== projectId && project.inviteCode !== deletedProject?.inviteCode)
+      sharedProjects.filter((project) => !recordMatchesAnyId(project, deletedIds))
     );
   }
 
@@ -368,9 +461,11 @@ const deleteProjectEverywhere = (projectId) => {
   if (Array.isArray(savedRecents)) {
     writeJson(
       recentConversationsKey,
-      savedRecents.filter((item) => item.projectId !== projectId && item.id !== projectId)
+      savedRecents.filter((item) => !recordMatchesAnyId(item, deletedIds))
     );
   }
+
+  clearActiveAnalysisSessionIfMatched(deletedIds);
 
   const savedRoom = readJson(shareRoomKey, null);
   if (savedRoom) {
@@ -567,18 +662,22 @@ function Projects({ onProjectRestore, onShareProjectOpen }) {
     }
 
     if (!onProjectRestore) return;
-    const thread = Array.isArray(project.thread) ? project.thread : [];
+    const matchedRecent = findRecentConversationForProject(project);
+    const thread = getProjectThread(project, matchedRecent);
     const lastUserMessage = [...thread].reverse().find((item) => item.role === 'user');
     const lastAiMessage = [...thread].reverse().find((item) => item.role === 'ai' || item.role === 'asset');
 
     onProjectRestore({
+      ...project,
       projectId: project.id,
+      id: project.id,
       q: lastUserMessage?.text || project.title,
       a: lastAiMessage?.text || '저장된 프로젝트를 이어서 작업합니다.',
       projectTitle: project.title,
       inviteCode: project.inviteCode,
-      files: asArray(project.files),
+      files: getProjectFiles(project, matchedRecent),
       thread,
+      visuals: asArray(project.visuals),
     });
   };
 
@@ -819,7 +918,7 @@ function Projects({ onProjectRestore, onShareProjectOpen }) {
                   <i className="fa-solid fa-expand" style={{ color: '#0ea5a4' }}></i>
                 </div>
               </div>
-              <div className="info-section"><h5>데이터 분석 요약</h5><p>{selectedVisual.desc}</p></div>
+              <div className="info-section"><h5>데이터 분석 요약</h5><p>{selectedVisual.desc || selectedVisual.text || '저장된 분석 요약이 없습니다.'}</p></div>
               <div className="info-section">
                 <h5>세부 정보 필드</h5>
                 <div className="details-list">

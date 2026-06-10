@@ -4,6 +4,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
 export default defineConfig({
+  envDir: '..',
   // Windows에서 node_modules/.vite 캐시가 잠기면 개발 서버 시작 시 EPERM이 날 수 있습니다.
   cacheDir: '.vite-cache',
   plugins: [

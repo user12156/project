@@ -120,7 +120,7 @@ function Sidebar({
           </MenuBtn>
           <MenuBtn $active={viewMode === '공유'} onClick={() => onMenuClick('공유')}>
             <SidebarIcon active={viewMode === '공유'}><FiShare2 /></SidebarIcon>
-            <span className="menu-text">함께하는 공간</span>
+            <span className="menu-text">작업공간</span>
           </MenuBtn>
         </BottomMenuGroup>
 

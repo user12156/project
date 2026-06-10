@@ -12,10 +12,13 @@ from dotenv import load_dotenv
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 PROJECT_ROOT = BACKEND_DIR.parent
+ROOT_ENV_FILE = PROJECT_ROOT / ".env"
 BACKEND_ENV_FILE = BACKEND_DIR / ".env"
 
-# 실행 위치가 project_v1이든 backend이든 항상 backend/.env만 읽습니다.
-load_dotenv(BACKEND_ENV_FILE)
+# 실행 위치가 project_v1이든 backend이든 루트 공통 .env를 먼저 읽고,
+# 백엔드 전용 값은 backend/.env가 덮어씁니다.
+load_dotenv(ROOT_ENV_FILE)
+load_dotenv(BACKEND_ENV_FILE, override=True)
 
 DEFAULT_CORS_ORIGINS = [
     "http://localhost:3000",
@@ -106,7 +109,13 @@ class Settings:
     hwp_parser_timeout_seconds: int
     openai_api_key: str
     openai_model: str
+    anthropic_api_key: str
+    anthropic_vision_model: str
+    google_api_key: str
     google_client_id: str
+    gemini_api_key: str
+    gemini_model: str
+    local_vlm_enabled: bool
     enable_bert_grounding: bool
     bert_grounding_model: str
     bert_grounding_threshold: float
@@ -114,6 +123,8 @@ class Settings:
     enable_topic_modeling: bool
     topic_model_backend: str
     topic_model_limit: int
+    enable_local_translation: bool
+    local_translation_auto_install: bool
 
     @property
     def is_production(self) -> bool:
@@ -164,11 +175,17 @@ def create_settings() -> Settings:
         hwp_parser_timeout_seconds=_env_int("HWP_PARSER_TIMEOUT_SECONDS", 30),
         openai_api_key=os.getenv("OPENAI_API_KEY", "").strip(),
         openai_model=os.getenv("OPENAI_MODEL", "gpt-4o-mini").strip(),
+        anthropic_api_key=os.getenv("ANTHROPIC_API_KEY", "").strip(),
+        anthropic_vision_model=os.getenv("ANTHROPIC_VISION_MODEL", "claude-3-5-sonnet-20241022").strip(),
+        google_api_key=os.getenv("GOOGLE_API_KEY", "").strip(),
         google_client_id=(os.getenv("GOOGLE_CLIENT_ID") or os.getenv("VITE_GOOGLE_CLIENT_ID", "")).strip(),
-        enable_bert_grounding=_env_bool("ENABLE_BERT_GROUNDING", True),
+        gemini_api_key=os.getenv("GEMINI_API_KEY", "").strip(),
+        gemini_model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip(),
+        local_vlm_enabled=_env_bool("LOCAL_VLM_ENABLED", False),
+        enable_bert_grounding=_env_bool("ENABLE_BERT_GROUNDING", False),
         bert_grounding_model=os.getenv(
             "BERT_GROUNDING_MODEL",
-            "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+            "jhgan/ko-sroberta-multitask",
         ).strip(),
         bert_grounding_threshold=_env_float("BERT_GROUNDING_THRESHOLD", 0.62),
         bert_grounding_instruction=os.getenv(
@@ -176,8 +193,10 @@ def create_settings() -> Settings:
             "Given an answer sentence, retrieve the most relevant source passage from the uploaded document.",
         ).strip(),
         enable_topic_modeling=_env_bool("ENABLE_TOPIC_MODELING", True),
-        topic_model_backend=os.getenv("TOPIC_MODEL_BACKEND", "bertopic").strip().lower(),
+        topic_model_backend=os.getenv("TOPIC_MODEL_BACKEND", "local").strip().lower(),
         topic_model_limit=_env_int("TOPIC_MODEL_LIMIT", 5),
+        enable_local_translation=_env_bool("ENABLE_LOCAL_TRANSLATION", True),
+        local_translation_auto_install=_env_bool("LOCAL_TRANSLATION_AUTO_INSTALL", True),
     )
     settings.validate()
     return settings
