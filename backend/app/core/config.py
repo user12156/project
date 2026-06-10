@@ -182,7 +182,7 @@ def create_settings() -> Settings:
         gemini_api_key=os.getenv("GEMINI_API_KEY", "").strip(),
         gemini_model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip(),
         local_vlm_enabled=_env_bool("LOCAL_VLM_ENABLED", False),
-        enable_bert_grounding=_env_bool("ENABLE_BERT_GROUNDING", False),
+        enable_bert_grounding=_env_bool("ENABLE_BERT_GROUNDING", True),
         bert_grounding_model=os.getenv(
             "BERT_GROUNDING_MODEL",
             "jhgan/ko-sroberta-multitask",
