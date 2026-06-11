@@ -23,7 +23,12 @@ const getApiBaseUrl = () => {
     return configuredUrl;
   }
 
-  return 'http://localhost:8000';
+  if (typeof window !== 'undefined' && window.location.hostname) {
+    const apiHost = window.location.hostname === 'localhost' ? '127.0.0.1' : window.location.hostname;
+    return `http://${apiHost}:8000`;
+  }
+
+  return 'http://127.0.0.1:8000';
 };
 
 const API_BASE_URL = getApiBaseUrl();
@@ -61,7 +66,9 @@ apiClient.interceptors.response.use(
     const isAuthSubmitRequest =
       requestUrl.includes('/api/auth/login') ||
       requestUrl.includes('/api/auth/signup') ||
-      requestUrl.includes('/api/auth/google');
+      requestUrl.includes('/api/auth/google') ||
+      requestUrl.includes('/api/auth/kakao') ||
+      requestUrl.includes('/api/auth/naver');
 
     if (!error.response) {
       error.userMessage = CONNECTION_ERROR_MESSAGE;
@@ -95,6 +102,21 @@ export const authAPI = {
 
   googleLogin: (idToken: string) =>
     apiClient.post('/api/auth/google', { id_token: idToken }),
+
+  googleConfig: () =>
+    apiClient.get('/api/auth/google/config'),
+
+  kakaoLogin: (code: string, redirectUri?: string) =>
+    apiClient.post('/api/auth/kakao', { code, redirect_uri: redirectUri }),
+
+  kakaoConfig: () =>
+    apiClient.get('/api/auth/kakao/config'),
+
+  naverLogin: (code: string, state: string, redirectUri?: string) =>
+    apiClient.post('/api/auth/naver', { code, state, redirect_uri: redirectUri }),
+
+  naverConfig: () =>
+    apiClient.get('/api/auth/naver/config'),
 
   healthCheck: () => apiClient.get('/api/health'),
 

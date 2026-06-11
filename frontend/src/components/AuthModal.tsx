@@ -1,4 +1,4 @@
-﻿import React, { ChangeEvent, KeyboardEvent, RefObject, useEffect, useRef } from 'react';
+﻿import React, { ChangeEvent, KeyboardEvent, RefObject, useEffect, useRef, useState } from 'react';
 import { FcGoogle } from 'react-icons/fc';
 import { RiKakaoTalkFill } from 'react-icons/ri';
 import { SiNaver } from 'react-icons/si';
@@ -12,6 +12,7 @@ import {
   RecommendBox,
   RecommendHeader,
 } from './styles/AuthModal.styles';
+import { authAPI } from '../services/api';
 
 type ModalMode = 'login' | 'signup' | 'recommend' | null;
 
@@ -30,6 +31,8 @@ interface AuthModalProps {
   onSignupSubmit: () => void;
   onGoogleSubmit: (idToken: string) => void;
   onGoogleError: (message: string) => void;
+  onKakaoStart: () => void;
+  onNaverStart: () => void;
   authError: string | null;
   authLoading: boolean;
 }
@@ -77,11 +80,19 @@ const SocialButtons = ({
   googleButtonRef,
   googleClientId,
   googleUnavailableMessage,
+  kakaoUnavailableMessage,
+  onKakaoClick,
+  naverUnavailableMessage,
+  onNaverClick,
 }: {
   mode: 'login' | 'signup';
   googleButtonRef: RefObject<HTMLDivElement>;
   googleClientId: string;
   googleUnavailableMessage?: string;
+  kakaoUnavailableMessage?: string;
+  onKakaoClick: () => void;
+  naverUnavailableMessage?: string;
+  onNaverClick: () => void;
 }) => {
   const isSignup = mode === 'signup';
 
@@ -95,13 +106,25 @@ const SocialButtons = ({
           <span>{googleUnavailableMessage || 'Google Client ID 필요'}</span>
         </button>
       )}
-      <button className="social-btn kakao" type="button" aria-label="카카오톡 연동">
+      <button
+        className="social-btn kakao"
+        type="button"
+        aria-label="카카오톡 연동"
+        onClick={onKakaoClick}
+        disabled={Boolean(kakaoUnavailableMessage)}
+      >
         <RiKakaoTalkFill />
-        <span>{isSignup ? '카카오톡으로 시작하기' : '카카오톡으로 계속하기'}</span>
+        <span>{kakaoUnavailableMessage || (isSignup ? '카카오톡으로 시작하기' : '카카오톡으로 계속하기')}</span>
       </button>
-      <button className="social-btn naver" type="button" aria-label="네이버 연동">
+      <button
+        className="social-btn naver"
+        type="button"
+        aria-label="네이버 연동"
+        onClick={onNaverClick}
+        disabled={Boolean(naverUnavailableMessage)}
+      >
         <SiNaver />
-        <span>{isSignup ? '네이버로 시작하기' : '네이버로 계속하기'}</span>
+        <span>{naverUnavailableMessage || (isSignup ? '네이버로 시작하기' : '네이버로 계속하기')}</span>
       </button>
     </div>
   );
@@ -116,26 +139,52 @@ function AuthModal({
   onSignupSubmit,
   onGoogleSubmit,
   onGoogleError,
+  onKakaoStart,
+  onNaverStart,
   authError,
   authLoading,
 }: AuthModalProps) {
   const googleButtonRef = useRef<HTMLDivElement>(null);
-  const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
+  const envGoogleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
+  const [runtimeGoogleClientId, setRuntimeGoogleClientId] = useState(envGoogleClientId);
+  const [kakaoConfig, setKakaoConfig] = useState({ restApiKey: '', redirectUri: '' });
+  const [naverConfig, setNaverConfig] = useState({ clientId: '', redirectUri: '' });
+  const googleClientId = runtimeGoogleClientId || envGoogleClientId;
   const googleAllowedOrigins = getAllowedGoogleOrigins();
   const googleOriginAllowed =
     typeof window === 'undefined' || googleAllowedOrigins.includes(window.location.origin);
   const googleUnavailableMessage = !googleClientId
-    ? 'Google Client ID 필요'
+    ? 'Google Client ID 확인 중'
     : !googleOriginAllowed
       ? 'Google 허용 출처 확인 필요'
       : '';
+  const kakaoUnavailableMessage = !kakaoConfig.restApiKey ? 'Kakao REST API 키 확인 중' : '';
+  const naverUnavailableMessage = !naverConfig.clientId ? 'Naver Client ID 확인 중' : '';
 
   useEffect(() => {
     if (modalMode !== 'login' && modalMode !== 'signup') return;
     if (!googleClientId) {
-      onGoogleError('Google Client ID가 프론트 빌드에 설정되지 않았습니다.');
-      return;
+      let cancelled = false;
+
+      authAPI.googleConfig()
+        .then((response) => {
+          if (cancelled) return;
+          const clientId = String(response.data?.client_id || '').trim();
+          if (clientId) {
+            setRuntimeGoogleClientId(clientId);
+            return;
+          }
+          onGoogleError('Google Client ID가 서버 .env에도 설정되지 않았습니다.');
+        })
+        .catch(() => {
+          if (!cancelled) onGoogleError('Google Client ID 설정을 서버에서 불러오지 못했습니다.');
+        });
+
+      return () => {
+        cancelled = true;
+      };
     }
+
     if (!googleOriginAllowed) {
       onGoogleError(`현재 주소(${window.location.origin})가 Google 로그인 허용 출처에 없습니다.`);
       return;
@@ -174,6 +223,83 @@ function AuthModal({
       cancelled = true;
     };
   }, [modalMode, googleClientId, googleOriginAllowed, onGoogleSubmit, onGoogleError]);
+
+  useEffect(() => {
+    if (modalMode !== 'login' && modalMode !== 'signup') return;
+
+    let cancelled = false;
+    authAPI.kakaoConfig()
+      .then((response) => {
+        if (cancelled) return;
+        const restApiKey = String(response.data?.rest_api_key || '').trim();
+        const redirectUri = String(response.data?.redirect_uri || '').trim();
+        setKakaoConfig({ restApiKey, redirectUri });
+        if (!restApiKey) onGoogleError('서버 .env에 KAKAO_REST_API_KEY가 설정되지 않았습니다.');
+      })
+      .catch(() => {
+        if (!cancelled) onGoogleError('카카오 로그인 설정을 서버에서 불러오지 못했습니다.');
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [modalMode, onGoogleError]);
+
+  useEffect(() => {
+    if (modalMode !== 'login' && modalMode !== 'signup') return;
+
+    let cancelled = false;
+    authAPI.naverConfig()
+      .then((response) => {
+        if (cancelled) return;
+        const clientId = String(response.data?.client_id || '').trim();
+        const redirectUri = String(response.data?.redirect_uri || '').trim();
+        setNaverConfig({ clientId, redirectUri });
+        if (!clientId) onGoogleError('서버 .env에 NAVER_CLIENT_ID가 설정되지 않았습니다.');
+      })
+      .catch(() => {
+        if (!cancelled) onGoogleError('네이버 로그인 설정을 서버에서 불러오지 못했습니다.');
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [modalMode, onGoogleError]);
+
+  const handleKakaoClick = () => {
+    if (!kakaoConfig.restApiKey || !kakaoConfig.redirectUri) {
+      onGoogleError('카카오 로그인 설정을 확인해주세요.');
+      return;
+    }
+
+    onKakaoStart();
+    const authorizeUrl = new URL('https://kauth.kakao.com/oauth/authorize');
+    authorizeUrl.searchParams.set('response_type', 'code');
+    authorizeUrl.searchParams.set('client_id', kakaoConfig.restApiKey);
+    authorizeUrl.searchParams.set('redirect_uri', kakaoConfig.redirectUri);
+    window.location.href = authorizeUrl.toString();
+  };
+
+  const handleNaverClick = () => {
+    if (!naverConfig.clientId || !naverConfig.redirectUri) {
+      onGoogleError('네이버 로그인 설정을 확인해주세요.');
+      return;
+    }
+
+    onNaverStart();
+    const state =
+      typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    sessionStorage.setItem('papermate.naverOAuthState', state);
+
+    const authorizeUrl = new URL('https://nid.naver.com/oauth2.0/authorize');
+    authorizeUrl.searchParams.set('response_type', 'code');
+    authorizeUrl.searchParams.set('client_id', naverConfig.clientId);
+    authorizeUrl.searchParams.set('redirect_uri', naverConfig.redirectUri);
+    authorizeUrl.searchParams.set('state', state);
+    window.location.href = authorizeUrl.toString();
+  };
 
   if (!modalMode) return null;
 
@@ -222,6 +348,10 @@ function AuthModal({
             googleButtonRef={googleButtonRef}
             googleClientId={googleClientId}
             googleUnavailableMessage={googleUnavailableMessage}
+            kakaoUnavailableMessage={kakaoUnavailableMessage}
+            onKakaoClick={handleKakaoClick}
+            naverUnavailableMessage={naverUnavailableMessage}
+            onNaverClick={handleNaverClick}
           />
           <div className="divider">{modalMode === 'login' ? '또는' : '또는 일반 가입'}</div>
 

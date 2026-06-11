@@ -19,6 +19,17 @@ class GoogleAuthRequest(BaseModel):
     id_token: str = Field(..., min_length=20)
 
 
+class KakaoAuthRequest(BaseModel):
+    code: str = Field(..., min_length=4)
+    redirect_uri: str | None = None
+
+
+class NaverAuthRequest(BaseModel):
+    code: str = Field(..., min_length=4)
+    state: str = Field(..., min_length=4)
+    redirect_uri: str | None = None
+
+
 class LoginRequest(BaseModel):
     """로그인 요청 body입니다."""
 

@@ -31,6 +31,7 @@ import {
 } from "./styles/Home.styles";
 import {
   clearActiveAnalysisSessionIfMatched,
+  getActiveAnalysisSessionKey,
   getProjectsKey,
   getRecentConversationsKey,
   readJson,
@@ -139,7 +140,7 @@ function Home() {
     return Array.isArray(parsed) ? parsed : [];
   };
 
-  const { isLoggedIn, user, logout, login, signup, googleLogin, loading } = useAuth();
+  const { isLoggedIn, user, logout, login, signup, googleLogin, acceptOAuthRedirect, loading } = useAuth();
   const previousUserIdRef = useRef<string | null>(null);
   const [viewMode, setViewMode] = useState(getViewFromLocation);
   const [restoredData, setRestoredData] = useState<any>(null);
@@ -157,6 +158,52 @@ function Home() {
     () => `analysis-${Date.now()}`,
   );
   const [newAnalysisSignal, setNewAnalysisSignal] = useState(0);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const authProvider = params.get("auth_provider");
+    if (authProvider !== "kakao" && authProvider !== "naver") return;
+
+    const authErrorMessage = params.get("auth_error");
+    const nextUrl = new URL(window.location.href);
+    ["auth_provider", "auth_token", "auth_user_id", "auth_username", "auth_error"].forEach((key) => {
+      nextUrl.searchParams.delete(key);
+    });
+    window.history.replaceState(window.history.state || {}, "", `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`);
+
+    if (authErrorMessage) {
+      setAuthError(authErrorMessage);
+      setModalMode("login");
+      return;
+    }
+
+    const accessToken = params.get("auth_token") || "";
+    const userId = params.get("auth_user_id") || "";
+    const username = params.get("auth_username") || "";
+    if (!accessToken || !userId || !username) return;
+
+    acceptOAuthRedirect({
+      accessToken,
+      user: { id: userId, username },
+    });
+
+    const storedProtectedView = sessionStorage.getItem("papermate.pendingProtectedView");
+    sessionStorage.removeItem("papermate.pendingProtectedView");
+    sessionStorage.removeItem("papermate.naverOAuthState");
+    setModalMode(null);
+    setFormData({ id: "", pw: "", confirmPw: "" });
+    window.alert(authProvider === "naver" ? "네이버로 로그인되었습니다." : "카카오톡으로 로그인되었습니다.");
+
+    if (storedProtectedView) {
+      navigateToView(storedProtectedView, {
+        replace: true,
+        clearRestoredData: storedProtectedView !== VIEW.ANALYSIS,
+        clearShareOpenData: storedProtectedView !== VIEW.SHARE,
+      });
+      setPendingProtectedView(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [acceptOAuthRedirect]);
 
   const navigateToView = (nextView: string, options: NavigateOptions = {}) => {
     const {
@@ -252,6 +299,11 @@ function Home() {
       navigateToView(VIEW.MYPAGE);
     else if (menuName === "새 채팅") {
       sessionStorage.setItem("papermate.skipActiveAnalysisRestore", "1");
+      const activeAnalysisKey = getActiveAnalysisSessionKey();
+      localStorage.removeItem(activeAnalysisKey);
+      window.dispatchEvent(new CustomEvent("papermate-storage-updated", {
+        detail: { key: activeAnalysisKey },
+      }));
       setNewAnalysisSignal((prev) => prev + 1);
       setAnalysisSessionKey(`analysis-new-${Date.now()}-${Math.random()}`);
       navigateToView(VIEW.ANALYSIS, { clearRestoredData: true });
@@ -338,6 +390,19 @@ function Home() {
     } finally {
       setAuthLoading(false);
     }
+  };
+
+  const handleKakaoStart = () => {
+    if (pendingProtectedView) {
+      sessionStorage.setItem("papermate.pendingProtectedView", pendingProtectedView);
+    } else {
+      sessionStorage.removeItem("papermate.pendingProtectedView");
+    }
+    setAuthError("");
+  };
+
+  const handleNaverStart = () => {
+    handleKakaoStart();
   };
 
   const handleAbsoluteLogout = () => {
@@ -704,6 +769,8 @@ function Home() {
           onSignupSubmit={() => submitAuthRequest("signup")}
           onGoogleSubmit={submitGoogleAuthRequest}
           onGoogleError={handleGoogleError}
+          onKakaoStart={handleKakaoStart}
+          onNaverStart={handleNaverStart}
           authError={authError}
           authLoading={authLoading}
         />
