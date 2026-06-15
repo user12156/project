@@ -4,7 +4,7 @@ import json
 import re
 
 from app.services.openai_client import OPENAI_CHUNK_TIMEOUT_SECONDS, OPENAI_REWRITE_TIMEOUT_SECONDS, make_openai_client
-from app.services.visual_buttons.graph_visual import process_chart_response
+from app.services.chart.chart_postprocessor import process_chart_response
 
 
 def llm_error(message: str, provider: str, model: str | None = None) -> dict:
