@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse
 from app.core.config import settings
 from app.core.database import close_database, ensure_indexes, ping_database
 from app.routers.analysis import router as analysis_router
-from app.routers.auth import router as auth_router
+from app.routers.auth import kakao_oauth_callback, naver_oauth_callback, router as auth_router
 from app.routers.document_previews import router as document_previews_router
 from app.routers.discussion_comments import router as discussion_comments_router
 from app.routers.project_files import router as project_files_router
@@ -66,6 +66,21 @@ app.add_middleware(
 )
 
 _register_routers(app)
+
+
+@app.get("/auth/kakao/callback", include_in_schema=False)
+async def kakao_callback_compat(code: str | None = None, error: str | None = None, error_description: str | None = None):
+    return await kakao_oauth_callback(code=code, error=error, error_description=error_description)
+
+
+@app.get("/auth/naver/callback", include_in_schema=False)
+async def naver_callback_compat(
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+    error_description: str | None = None,
+):
+    return await naver_oauth_callback(code=code, state=state, error=error, error_description=error_description)
 
 
 @app.middleware("http")

@@ -83,6 +83,17 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  const applyAuthSession = (accessToken, userData) => {
+    localStorage.setItem('accessToken', accessToken);
+    localStorage.setItem('username', userData.username);
+    localStorage.setItem('userId', userData.id);
+    userData.profileImage = localStorage.getItem(getProfileImageKey(userData.id)) || '';
+    migrateCurrentUserStorage();
+
+    setIsLoggedIn(true);
+    setUser(userData);
+  };
+
   // useEffect는 컴포넌트가 처음 올라올 때 실행되는 React Hook입니다.
   // 새로고침 후에도 로그인 상태를 유지하기 위해 localStorage의 토큰을 확인합니다.
   useEffect(() => {
@@ -115,16 +126,7 @@ export const AuthProvider = ({ children }) => {
     }
     const { access_token, user: userData } = response.data;
 
-    localStorage.setItem('accessToken', access_token);
-    localStorage.setItem('username', userData.username);
-    localStorage.setItem('userId', userData.id);
-    userData.profileImage = localStorage.getItem(getProfileImageKey(userData.id)) || '';
-
-    // userId가 저장된 다음 실행해야 계정별 저장소 키가 올바르게 만들어집니다.
-    migrateCurrentUserStorage();
-
-    setIsLoggedIn(true);
-    setUser(userData);
+    applyAuthSession(access_token, userData);
   };
 
   // 회원가입도 로그인과 동일하게 토큰/유저 정보를 저장한 뒤 앱 상태를 로그인으로 바꿉니다.
@@ -138,28 +140,31 @@ export const AuthProvider = ({ children }) => {
     }
     const { access_token, user: userData } = response.data;
 
-    localStorage.setItem('accessToken', access_token);
-    localStorage.setItem('username', userData.username);
-    localStorage.setItem('userId', userData.id);
-    userData.profileImage = localStorage.getItem(getProfileImageKey(userData.id)) || '';
-    migrateCurrentUserStorage();
-
-    setIsLoggedIn(true);
-    setUser(userData);
+    applyAuthSession(access_token, userData);
   };
 
   const googleLogin = async (idToken) => {
     const response = await authAPI.googleLogin(idToken);
     const { access_token, user: userData } = response.data;
 
-    localStorage.setItem('accessToken', access_token);
-    localStorage.setItem('username', userData.username);
-    localStorage.setItem('userId', userData.id);
-    userData.profileImage = localStorage.getItem(getProfileImageKey(userData.id)) || '';
-    migrateCurrentUserStorage();
+    applyAuthSession(access_token, userData);
+  };
 
-    setIsLoggedIn(true);
-    setUser(userData);
+  const kakaoLogin = async (code, redirectUri) => {
+    const response = await authAPI.kakaoLogin(code, redirectUri);
+    const { access_token, user: userData } = response.data;
+    applyAuthSession(access_token, userData);
+  };
+
+  const naverLogin = async (code, state, redirectUri) => {
+    const response = await authAPI.naverLogin(code, state, redirectUri);
+    const { access_token, user: userData } = response.data;
+    applyAuthSession(access_token, userData);
+  };
+
+  const acceptOAuthRedirect = ({ accessToken, user: userData }) => {
+    if (!accessToken || !userData?.id || !userData?.username) return;
+    applyAuthSession(accessToken, userData);
   };
 
   // 로그아웃은 인증 정보만 지웁니다.
@@ -260,6 +265,9 @@ export const AuthProvider = ({ children }) => {
         login,
         signup,
         googleLogin,
+        kakaoLogin,
+        naverLogin,
+        acceptOAuthRedirect,
         logout,
         updateProfile,
         changePassword,

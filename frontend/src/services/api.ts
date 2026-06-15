@@ -75,7 +75,9 @@ apiClient.interceptors.response.use(
     const isAuthSubmitRequest =
       requestUrl.includes('/api/auth/login') ||
       requestUrl.includes('/api/auth/signup') ||
-      requestUrl.includes('/api/auth/google');
+      requestUrl.includes('/api/auth/google') ||
+      requestUrl.includes('/api/auth/kakao') ||
+      requestUrl.includes('/api/auth/naver');
 
     if (!error.response) {
       error.userMessage = CONNECTION_ERROR_MESSAGE;
@@ -109,6 +111,18 @@ export const authAPI = {
 
   googleLogin: (idToken: string) =>
     apiClient.post('/api/auth/google', { id_token: idToken }),
+
+  kakaoLogin: (code: string, redirectUri?: string) =>
+    apiClient.post('/api/auth/kakao', { code, redirect_uri: redirectUri }),
+
+  kakaoConfig: () =>
+    apiClient.get('/api/auth/kakao/config'),
+
+  naverLogin: (code: string, state: string, redirectUri?: string) =>
+    apiClient.post('/api/auth/naver', { code, state, redirect_uri: redirectUri }),
+
+  naverConfig: () =>
+    apiClient.get('/api/auth/naver/config'),
 
   healthCheck: () => apiClient.get('/api/health'),
 

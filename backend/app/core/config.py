@@ -106,6 +106,14 @@ class Settings:
     anthropic_vision_model: str
     google_api_key: str
     google_client_id: str
+    kakao_rest_api_key: str
+    kakao_client_secret: str
+    kakao_redirect_uri: str
+    kakao_frontend_redirect_uri: str
+    naver_client_id: str
+    naver_client_secret: str
+    naver_redirect_uri: str
+    naver_frontend_redirect_uri: str
     gemini_api_key: str
     gemini_model: str
     local_vlm_enabled: bool
@@ -172,6 +180,27 @@ def create_settings() -> Settings:
         anthropic_vision_model=os.getenv("ANTHROPIC_VISION_MODEL", "claude-3-5-sonnet-20241022").strip(),
         google_api_key=os.getenv("GOOGLE_API_KEY", "").strip(),
         google_client_id=(os.getenv("GOOGLE_CLIENT_ID") or os.getenv("VITE_GOOGLE_CLIENT_ID", "")).strip(),
+        kakao_rest_api_key=(
+            os.getenv("KAKAO_REST_API_KEY")
+            or os.getenv("KAKAO_CLIENT_ID")
+            or os.getenv("VITE_KAKAO_REST_API_KEY")
+            or os.getenv("VITE_KAKAO_CLIENT_ID", "")
+        ).strip(),
+        kakao_client_secret=os.getenv("KAKAO_CLIENT_SECRET", "").strip(),
+        kakao_redirect_uri=os.getenv("KAKAO_REDIRECT_URI", "http://localhost:8000/auth/kakao/callback").strip(),
+        kakao_frontend_redirect_uri=(
+            os.getenv("KAKAO_FRONTEND_REDIRECT_URI")
+            or os.getenv("FRONTEND_URL")
+            or "http://localhost:3000"
+        ).strip().rstrip("/"),
+        naver_client_id=(os.getenv("NAVER_CLIENT_ID") or os.getenv("VITE_NAVER_CLIENT_ID", "")).strip(),
+        naver_client_secret=os.getenv("NAVER_CLIENT_SECRET", "").strip(),
+        naver_redirect_uri=os.getenv("NAVER_REDIRECT_URI", "http://localhost:8000/auth/naver/callback").strip(),
+        naver_frontend_redirect_uri=(
+            os.getenv("NAVER_FRONTEND_REDIRECT_URI")
+            or os.getenv("FRONTEND_URL")
+            or "http://localhost:3000"
+        ).strip().rstrip("/"),
         gemini_api_key=os.getenv("GEMINI_API_KEY", "").strip(),
         gemini_model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip(),
         local_vlm_enabled=_env_bool("LOCAL_VLM_ENABLED", False),
