@@ -612,6 +612,38 @@ function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, c
     delete sourceObjectUrlsRef.current[fileKey];
   };
 
+  const warmConvertiblePreviews = async (targetFiles: any[] = []) => {
+    for (const file of targetFiles) {
+      if (!isUploadableFile(file)) continue;
+      const filename = file.name || '';
+      const extension = filename.split('.').pop()?.toLowerCase() || '';
+      if (!['hwp', 'hwpx'].includes(extension)) continue;
+
+      const fileKey = getFileKey(file);
+      cacheSourcePreview(fileKey, {
+        kind: 'loading',
+        url: '',
+        text: '',
+        message: 'HWP/HWPX 문서를 파일별로 PDF 미리보기로 변환하는 중입니다.',
+        fileKey,
+      });
+
+      try {
+        const response = await analysisAPI.previewDocument(file);
+        const pdfBlob = response.data instanceof Blob
+          ? response.data
+          : new Blob([response.data], { type: 'application/pdf' });
+        revokeSourceObjectUrl(fileKey);
+        const previewUrl = URL.createObjectURL(pdfBlob);
+        sourceObjectUrlsRef.current[fileKey] = previewUrl;
+        cacheSourcePreview(fileKey, { kind: 'pdf', url: previewUrl, text: '', message: '', fileKey });
+      } catch (error) {
+        const message = error.response?.data?.detail || error.userMessage || '문서를 PDF 미리보기로 변환하지 못했습니다.';
+        cacheSourcePreview(fileKey, { kind: 'meta', url: '', text: '', message, fileKey });
+      }
+    }
+  };
+
   const requireLoginForSave = () => {
     if (localStorage.getItem('accessToken')) return false;
     window.alert('저장과 공유 기능은 로그인 후 사용할 수 있습니다.');
@@ -917,6 +949,7 @@ function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, c
       setFiles([]);
       setActiveFiles(nextActiveFiles);
       setSelectedSourceKey(getFileKey(selectedFiles[0]));
+      warmConvertiblePreviews(selectedFiles);
       saveSourceFiles([recentConversationIdRef.current, effectiveProjectId], nextActiveFiles);
       handleCreateVisualFromFiles(pendingVisualType, nextFiles, nextActiveFiles);
       event.target.value = '';
@@ -926,6 +959,7 @@ function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, c
 
     setFiles(nextFiles);
     setSelectedSourceKey(getFileKey(selectedFiles[0]));
+    warmConvertiblePreviews(selectedFiles);
     setPromptText((current) => (current.trim() ? current : '분석해 드릴까요?'));
     writeJson(getActiveAnalysisSessionKey(), {
       id: recentConversationIdRef.current,
@@ -1167,7 +1201,7 @@ function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, c
     const activeUploadFiles = activeFiles.filter(isUploadableFile);
     const pendingFiles = newFiles.length > 0 ? mergeUniqueFiles(activeFiles, newFiles) : [...activeFiles];
     const question = nextQuestion || '업로드한 문서를 요약해줘';
-    const compareMode = isCompareQuestion(question);
+    const compareMode = isCompareQuestion(question) || pendingFiles.length >= 2;
     const selectedPreviewFile = selectedSourceFile && pendingFiles.some((file) => getFileKey(file) === getFileKey(selectedSourceFile))
       ? selectedSourceFile
       : null;

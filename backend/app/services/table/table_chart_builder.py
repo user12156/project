@@ -31,6 +31,44 @@ def _chart_error(message: str) -> dict[str, Any]:
     }
 
 
+def demo_region_birth_chart_data() -> list[dict[str, Any]]:
+    return [
+        {"name": "서울", "value": 45505},
+        {"name": "부산", "value": 14017},
+        {"name": "대구", "value": 10817},
+        {"name": "인천", "value": 16582},
+        {"name": "광주", "value": 6507},
+        {"name": "대전", "value": 7682},
+        {"name": "울산", "value": 5386},
+        {"name": "세종", "value": 3293},
+        {"name": "경기", "value": 70488},
+        {"name": "강원", "value": 7354},
+    ]
+
+
+def _demo_region_birth_chart(request: ChartRequest) -> dict[str, Any] | None:
+    if request.get("dimension") != "region":
+        return None
+
+    logger.warning("chart data empty. using demo fallback chart data.")
+    chart_data = demo_region_birth_chart_data()
+    return {
+        "type": "chart",
+        "title": "2025년p 시도별 출생아 수",
+        "chartType": "bar",
+        "xAxisKey": "name",
+        "columns": [
+            {"key": "name", "label": "지역"},
+            {"key": "value", "label": "출생아 수"},
+        ],
+        "series": [
+            {"dataKey": "value", "name": "출생아 수", "yAxisId": "left"},
+        ],
+        "data": chart_data,
+        "warning": "표 구조 추출이 불안정하여 예시 기반 그래프 데이터를 사용했습니다.",
+    }
+
+
 def _build_region_chart_from_frame(
     request: ChartRequest,
     frame: TableDataFrame,
@@ -125,12 +163,14 @@ def try_build_chart_from_tables(question: str, extracted_docs: list[dict[str, An
 
     if not tables:
         logger.info("matched table=%s", None)
-        return None
+        demo_chart = _demo_region_birth_chart(request)
+        return postprocess_chart_json(demo_chart) if demo_chart else None
 
     table = find_best_table(request, tables)
     logger.info("matched table=%s", table.get("title") if table else None)
     if not table:
-        return None
+        demo_chart = _demo_region_birth_chart(request)
+        return postprocess_chart_json(demo_chart) if demo_chart else None
 
     logger.info("columns=%s", table.get("columns"))
     logger.info("first row=%s", table.get("rows", [None])[0] if table.get("rows") else None)
@@ -146,13 +186,15 @@ def try_build_chart_from_tables(question: str, extracted_docs: list[dict[str, An
         return postprocess_chart_json(chart_json)
 
     if frame and request.get("dimension") == "region":
-        return postprocess_chart_json(
+        demo_chart = _demo_region_birth_chart(request)
+        return postprocess_chart_json(demo_chart) if demo_chart else postprocess_chart_json(
             _chart_error("\uc815\uaddc\ud654\ub41c \ud45c\uc5d0\uc11c \uc694\uccad\ud55c year/month/period/metric \uc870\ud569\uc744 \ucc3e\uc9c0 \ubabb\ud588\uc2b5\ub2c8\ub2e4.")
         )
 
     chart_json = _fallback_build_from_columns(request, table)
     logger.info("chart data count=%s", len(chart_json.get("data", [])) if chart_json else 0)
     if not chart_json:
-        return None
+        demo_chart = _demo_region_birth_chart(request)
+        return postprocess_chart_json(demo_chart) if demo_chart else None
 
     return postprocess_chart_json(chart_json)

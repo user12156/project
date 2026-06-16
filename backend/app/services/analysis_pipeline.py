@@ -15,6 +15,8 @@ from .fallback_analysis import (
     build_empty_context_answer,
 )
 from .analysis.grounding import validate_grounding
+from .analysis.compare_builder import build_document_compare_answer
+from .analysis.query_analyzer import is_compare_request
 from .llm.service import analyze_with_llm
 from .translation import translate_analysis_payload
 from .web_search import search_results_to_docs, wants_web_search, web_search
@@ -260,6 +262,11 @@ def _llm_first_payload(
         "model": llm_answer.get("model"),
         "llm_error": llm_error,
         "suggested_questions": llm_answer.get("suggested_questions", []) or suggested_questions,
+        "comparison_table": llm_answer.get("comparison_table", []),
+        "time_series_comparison_table": llm_answer.get("time_series_comparison_table", []),
+        "experiment_comparison_table": llm_answer.get("experiment_comparison_table", []),
+        "experiment_chart": llm_answer.get("experiment_chart"),
+        "compare": llm_answer.get("compare", {}),
         "web_sources": web_docs or [],
     })
 
@@ -319,6 +326,9 @@ def run_analysis_pipeline(
     fallback_answer = build_analysis_answer(question, extracted_docs)
     local_suggested_questions = _local_suggested_questions(fallback_answer)
     has_grounded_docs = any(str(doc.get("text", "")).strip() for doc in extracted_docs)
+    should_compare_documents = is_compare_request(question) or len(
+        [doc for doc in extracted_docs if str(doc.get("text", "")).strip()]
+    ) >= 2
     is_visual_request = _is_visual_request(question)
     web_docs = search_results_to_docs(web_search(question)) if has_grounded_docs and wants_web_search(question) else []
     selected_provider, resolved_key, llm_key_source, llm_key_received = _resolve_llm_provider_and_keys(
@@ -344,6 +354,21 @@ def run_analysis_pipeline(
             "llm_key_source": None,
             "suggested_questions": [],
         })
+
+    if should_compare_documents:
+        compare_payload = build_document_compare_answer(question, extracted_docs)
+        if compare_payload:
+            return _with_korean_answer({
+                **fallback_answer,
+                **compare_payload,
+                "llm_used": False,
+                "provider": selected_provider,
+                "model": None,
+                "llm_error": None,
+                "llm_key_received": llm_key_received,
+                "llm_key_source": llm_key_source,
+                "intent": "compare",
+            })
 
     if not llm_key_received:
         return _with_korean_answer({

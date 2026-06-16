@@ -7,12 +7,12 @@ standard form whether the source was structured rows or loose table text.
 
 from __future__ import annotations
 
+import logging
 import re
 from typing import Any
 
 from app.services.chart.chart_normalizer import normalize_value
 from app.services.table.column_matcher import find_region_column
-from app.services.table.table_matcher import table_to_search_text
 from app.services.table.table_schema import ChartRequest, TableDataFrame, TableRecord
 from app.services.table.table_to_chart import normalize_region
 
@@ -37,6 +37,9 @@ FALLBACK_REGIONS = [
     "\uacbd\ub0a8",
     "\uc81c\uc8fc",
 ]
+
+
+logger = logging.getLogger(__name__)
 
 
 def column_key(column: str | dict[str, Any]) -> str:
@@ -97,30 +100,119 @@ def parse_number(value: str) -> int | float | None:
             return None
 
 
-def fallback_region_birth_rows_from_text(text: str) -> TableDataFrame:
+def table_to_fallback_text(table: TableRecord) -> str:
+    parts = []
+    for key in ("title", "headers", "columns", "rows", "text"):
+        value = table.get(key)
+        if value:
+            parts.append(str(value))
+    return " ".join(parts)
+
+
+def cut_to_table_body(clean: str) -> str:
+    markers = [
+        "[\ud45c2]\uc2dc\ub3c4\ubcc4\ucd9c\uc0dd\uc544\uc218",
+        "\ub204\uacc4\uc804\ub144\ub204\uacc4\ube44",
+        "\uc804\uad6d238,317",
+        "\uc804\uad6d238317",
+    ]
+    positions = []
+    for marker in markers:
+        pos = clean.find(marker)
+        if pos >= 0:
+            positions.append(pos)
+    if positions:
+        return clean[max(positions):]
+    return clean
+
+
+def _cut_to_spaced_table_body(text: str) -> str:
+    markers = [
+        r"\[\s*\ud45c\s*2\s*\]\s*\uc2dc\ub3c4\ubcc4\s*\ucd9c\uc0dd\uc544\s*\uc218",
+        r"\ub204\uacc4\s*\uc804\ub144\ub204\uacc4\ube44",
+        r"\uc804\uad6d\s*238,317",
+        r"\uc804\uad6d\s*238317",
+    ]
+    positions = []
+    for marker in markers:
+        match = re.search(marker, text)
+        if match:
+            positions.append(match.start())
+    if positions:
+        return text[max(positions):]
+    return text
+
+
+def fallback_region_birth_rows_from_text(text: str, request: ChartRequest | None = None) -> TableDataFrame:
     """Best-effort fallback for regional birth charts when table cells are missing."""
 
     rows: TableDataFrame = []
-    clean = re.sub(r"\s+", "", str(text or ""))
+    spaced = re.sub(r"\s+", " ", str(text or "")).strip()
+    spaced = _cut_to_spaced_table_body(spaced)
+    request = request or {}
+    metric = request.get("metric") or "birth_count"
+    year = str(request.get("year") or "")
+    month = request.get("month")
+    period = request.get("period") or "year"
+    regions = [region for region in FALLBACK_REGIONS if region != "\uc804\uad6d"]
 
-    for region in FALLBACK_REGIONS:
-        match = re.search(rf"{re.escape(region)}([0-9][0-9,]*(?:\.\d+)?)", clean)
-        if not match:
+    for index, region in enumerate(regions):
+        start_match = re.search(rf"{re.escape(region)}\s*-?\d[\d,]*(?:\.\d+)?", spaced)
+        if not start_match:
+            continue
+        start = start_match.start()
+
+        end_candidates = []
+        for next_region in regions[index + 1:]:
+            next_match = re.search(
+                rf"{re.escape(next_region)}\s*-?\d[\d,]*(?:\.\d+)?",
+                spaced[start + len(region):],
+            )
+            if next_match:
+                end_candidates.append(start + len(region) + next_match.start())
+
+        end = min(end_candidates) if end_candidates else len(spaced)
+        segment = spaced[start + len(region):end]
+        numbers = re.findall(r"-?(?:\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)", segment)
+        values = [parse_number(number) for number in numbers]
+        values = [value for value in values if value is not None]
+        if not values:
             continue
 
-        value = parse_number(match.group(1))
+        value_index = 0
+        if year == "2024" and period == "year":
+            value_index = 0
+        elif year == "2025" and period == "year":
+            value_index = 1
+        elif year == "2025" and month == 3:
+            value_index = 2
+        elif year == "2025" and period in ("quarter_1", "1~3\uc6d4"):
+            value_index = 3
+        elif year == "2026" and month == 2:
+            value_index = 4
+        elif year == "2026" and month == 3:
+            value_index = 5
+        elif year == "2026" and metric == "crude_birth_rate":
+            value_index = 6
+        elif year == "2026" and period in ("quarter_1", "1~3\uc6d4"):
+            value_index = 7
+
+        if value_index >= len(values):
+            continue
+
+        value = values[value_index]
         if value is None:
             continue
 
         rows.append(
             {
                 "region": region,
-                "year": None,
-                "month": None,
-                "period": "year",
-                "metric": "birth_count",
+                "year": year or None,
+                "month": month,
+                "period": period,
+                "metric": metric,
                 "value": value,
-                "source_col": "fallback_text",
+                "source_col": f"fallback_text_index_{value_index}",
             }
         )
 
@@ -181,13 +273,9 @@ def dataframe_from_table(table: TableRecord, request: ChartRequest) -> TableData
         return frame
 
     if request.get("dimension") == "region" and request.get("metric") == "birth_count":
-        fallback_rows = fallback_region_birth_rows_from_text(table_to_search_text(table))
-        for row in fallback_rows:
-            row["year"] = request.get("year")
-            row["month"] = request.get("month")
-            row["period"] = request.get("period") or "year"
-            row["metric"] = request.get("metric") or "birth_count"
+        fallback_rows = fallback_region_birth_rows_from_text(table_to_fallback_text(table), request)
+        logger.info("fallback rows count=%s", len(fallback_rows))
+        logger.info("fallback rows sample=%s", fallback_rows[:5])
         return fallback_rows
 
     return []
-

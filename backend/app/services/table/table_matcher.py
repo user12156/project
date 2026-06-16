@@ -27,6 +27,13 @@ REGION_TABLE_TITLE_BY_METRIC = {
     "divorce_count": "\uc2dc\ub3c4\ubcc4\uc774\ud63c\uac74\uc218",
 }
 
+NATIONWIDE_TABLE_TITLE_BY_METRIC = {
+    "birth_count": "\uc804\uad6d\ucd9c\uc0dd\uc544\uc218",
+    "death_count": "\uc804\uad6d\uc0ac\ub9dd\uc790\uc218",
+    "marriage_count": "\uc804\uad6d\ud63c\uc778\uac74\uc218",
+    "divorce_count": "\uc804\uad6d\uc774\ud63c\uac74\uc218",
+}
+
 
 def _column_text(column: str | dict[str, Any]) -> str:
     if isinstance(column, dict):
@@ -72,12 +79,40 @@ def table_to_search_text(table: dict[str, Any]) -> str:
     return " ".join(parts).replace(" ", "")
 
 
+def _compact_text(text: str) -> str:
+    return "".join(str(text or "").split())
+
+
+def _region_target_title(request: dict[str, Any]) -> str | None:
+    if request.get("dimension") != "region":
+        return None
+    return REGION_TABLE_TITLE_BY_METRIC.get(request.get("metric"))
+
+
+def _is_nationwide_table(request: dict[str, Any], text: str) -> bool:
+    if request.get("dimension") != "region":
+        return False
+    compact = _compact_text(text)
+    region_title = _region_target_title(request)
+    if region_title and region_title in compact:
+        return False
+    nationwide_title = NATIONWIDE_TABLE_TITLE_BY_METRIC.get(request.get("metric"))
+    return bool(nationwide_title and nationwide_title in compact)
+
+
 def _fallback_title_match(request: dict[str, Any], tables: list[dict[str, Any]]) -> dict[str, Any] | None:
     metric = request.get("metric")
     dimension = request.get("dimension")
+    region_title = _region_target_title(request)
 
     for table in tables or []:
         search_text = table_to_search_text(table)
+        compact = _compact_text(search_text)
+
+        if region_title and region_title not in compact:
+            continue
+        if _is_nationwide_table(request, search_text):
+            continue
 
         if metric == "birth_count" and "출생아" in search_text:
             if dimension == "region" and any(
@@ -100,13 +135,12 @@ def find_best_table(request: dict[str, Any] | str, tables: list[dict[str, Any]])
     if isinstance(request, str):
         request = parse_chart_request(request)
 
-    if request.get("dimension") == "region":
-        target_title = REGION_TABLE_TITLE_BY_METRIC.get(request.get("metric"))
-        if target_title:
-            for table in tables or []:
-                compact = table_to_search_text(table).replace(" ", "")
-                if target_title in compact:
-                    return table
+    region_title = _region_target_title(request)
+    if region_title:
+        for table in tables or []:
+            compact = _compact_text(table_to_search_text(table))
+            if region_title in compact:
+                return table
 
     best_table = None
     best_score = 0
@@ -115,6 +149,9 @@ def find_best_table(request: dict[str, Any] | str, tables: list[dict[str, Any]])
 
     for table in tables or []:
         haystack = _table_haystack(table)
+        if _is_nationwide_table(request, haystack):
+            continue
+
         title = str(table.get("title") or "")
         score = 0
 

@@ -3,9 +3,10 @@
 import json
 
 from app.core.config import settings
+from app.services.analysis.compare_builder import build_document_compare_answer
+from app.services.analysis.query_analyzer import is_compare_request
 from app.services.llm.gemini_provider import analyze_with_gemini
 from app.services.llm.openai_provider import analyze_with_openai
-from app.services.llm.prompt_builder import is_visual_request
 from app.services.llm.response_utils import llm_error
 from app.services.table.chart_request_parser import parse_chart_request
 from app.services.table.table_chart_builder import try_build_chart_from_tables
@@ -17,13 +18,28 @@ MISSING_API_KEY_MESSAGE = "PaperMate 분석 키가 없어 기본 문서 추출�
 def _is_chart_request(question: str) -> bool:
     lowered = (question or "").lower()
     chart_keywords = ("그래프", "차트", "막대", "선 그래프", "꺾은선", "chart", "graph", "bar", "line")
-    return is_visual_request(question) or any(keyword in lowered for keyword in chart_keywords)
+    return any(keyword in lowered or keyword in (question or "") for keyword in chart_keywords)
 
 
 def _chart_response(chart_json: dict, provider: str, model: str | None = None) -> dict:
     return {
         "answer": json.dumps(chart_json, ensure_ascii=False),
         "suggested_questions": [],
+        "llm_used": True,
+        "provider": provider,
+        "model": model,
+    }
+
+
+def _compare_response(compare_payload: dict, provider: str, model: str | None = None) -> dict:
+    return {
+        "answer": compare_payload["answer"],
+        "comparison_table": compare_payload.get("comparison_table", []),
+        "time_series_comparison_table": compare_payload.get("time_series_comparison_table", []),
+        "experiment_comparison_table": compare_payload.get("experiment_comparison_table", []),
+        "experiment_chart": compare_payload.get("experiment_chart"),
+        "compare": compare_payload.get("compare", {}),
+        "suggested_questions": compare_payload.get("suggested_questions", []),
         "llm_used": True,
         "provider": provider,
         "model": model,
@@ -51,6 +67,11 @@ def analyze_with_llm(
 
     provider_name = "gemini" if selected_provider in {"gemini", "google"} else "openai"
     model_name = settings.gemini_model if provider_name == "gemini" else settings.openai_model
+
+    if is_compare_request(question) or len([doc for doc in extracted_docs if str(doc.get("text", "")).strip()]) >= 2:
+        compare_payload = build_document_compare_answer(question, extracted_docs)
+        if compare_payload:
+            return _compare_response(compare_payload, provider_name, model_name)
 
     if _is_chart_request(question):
         table_chart = try_build_chart_from_tables(question, extracted_docs)

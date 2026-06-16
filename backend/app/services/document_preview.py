@@ -1,5 +1,6 @@
 # 서비스: 문서 텍스트 전처리, 표/이미지 감지, 미리보기 생성 로직을 담고 있습니다.
 import io
+import logging
 import os
 import re
 import subprocess
@@ -13,6 +14,8 @@ from fastapi import HTTPException, status
 from app.core.config import settings
 from app.services.document_conversion import render_text_preview_pdf
 
+
+logger = logging.getLogger(__name__)
 
 PREVIEW_CACHE: dict[tuple[str, int], bytes] = {}
 PREVIEW_EXTENSIONS = {".hwp", ".hwpx"}
@@ -230,12 +233,15 @@ def _convert_with_office(filename: str, content: bytes) -> bytes | None:
 
     command = os.getenv("DOCUMENT_PREVIEW_OFFICE_COMMAND", "soffice").strip() or "soffice"
     suffix = Path(filename).suffix.lower() or ".document"
+    logger.info("convert input filename=%s", filename)
+    logger.info("convert input ext=%s", suffix)
     try:
         with tempfile.TemporaryDirectory() as tmpdir:
             input_path = Path(tmpdir) / f"preview{suffix}"
             output_dir = Path(tmpdir) / "out"
             output_dir.mkdir(parents=True, exist_ok=True)
             input_path.write_bytes(content)
+            logger.info("convert input path=%s", input_path)
 
             subprocess.run(
                 [
@@ -254,9 +260,12 @@ def _convert_with_office(filename: str, content: bytes) -> bytes | None:
             )
             pdf_files = list(output_dir.glob("*.pdf"))
             if not pdf_files:
+                logger.warning("converted pdf path was not created. filename=%s output_dir=%s", filename, output_dir)
                 return None
+            logger.info("converted pdf path=%s", pdf_files[0])
             return pdf_files[0].read_bytes()
-    except Exception:
+    except Exception as exc:
+        logger.warning("office preview conversion failed. filename=%s error=%s", filename, exc)
         return None
 
 
@@ -279,6 +288,8 @@ def _fallback_text_preview(filename: str, content: bytes) -> bytes:
 
 def create_document_preview_pdf(filename: str, content: bytes) -> bytes:
     extension = Path(filename).suffix.lower()
+    logger.info("preview input filename=%s", filename)
+    logger.info("preview input ext=%s", extension)
     if extension not in PREVIEW_EXTENSIONS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

@@ -146,42 +146,7 @@ def chat_user_content(user_prompt: str, extracted_docs: list[dict]):
 
 
 def is_visual_request(question: str) -> bool:
-    visual_keywords = (
-        "표",
-        "테이블",
-        "그래프",
-        "차트",
-        "시각화",
-        "막대",
-        "선형",
-        "선 그래프",
-        "꺾은선",
-        "마인드맵",
-        "비교표",
-        "json",
-        "visual",
-        "chart",
-        "table",
-        "graph",
-        "mindmap",
-    )
-    lowered = (question or "").lower()
-    if any(
-        keyword in (question or "")
-        for keyword in (
-            "표",
-            "테이블",
-            "그래프",
-            "차트",
-            "시각화",
-            "막대",
-            "선 그래프",
-            "꺾은선",
-            "마인드맵",
-        )
-    ):
-        return True
-    return any(keyword in lowered for keyword in visual_keywords)
+    return False
 
 
 def build_prompts(
@@ -276,39 +241,7 @@ def build_prompts(
         ),
     )
 
-    visual_mode_prompt = (
-        "-----------------------------------\n"
-        "[Task: Data Visualization]\n"
-        "- When requested to visualize, return ONLY a single raw JSON object.\n"
-        "- Do not include markdown, code blocks, explanations, or SUGGESTED_QUESTIONS.\n"
-        "- If the user asks for a graph/chart, return type='chart'.\n"
-        "- Supported chartType: line, bar only.\n"
-        "- Use only values directly found in the uploaded document context.\n"
-        "- Do not invent labels, categories, dates, years, percentages, counts, scores, or numeric values.\n"
-        "- If a value is missing, use null.\n"
-        "- Numeric values should be JSON numbers when possible.\n"
-        "- For monthly trend graphs, xAxisKey must be 'month' and labels must be '1월'...'12월'. Each year should be a separate series.\n"
-        "- xAxisKey must exist in every data row.\n"
-        "- Each series.dataKey must exist in data rows.\n\n"
-        "Return this JSON shape for charts:\n"
-        "{\n"
-        "  \"reasoning_summary\": \"한국어로 1문장만 작성\",\n"
-        "  \"type\": \"chart\",\n"
-        "  \"title\": \"그래프 제목\",\n"
-        "  \"chartType\": \"line\",\n"
-        "  \"xAxisKey\": \"month\",\n"
-        "  \"columns\": [{\"key\": \"month\", \"label\": \"월\"}, {\"key\": \"value\", \"label\": \"값\"}],\n"
-        "  \"series\": [{\"dataKey\": \"value\", \"name\": \"값\", \"yAxisId\": \"left\"}],\n"
-        "  \"data\": [{\"month\": \"1월\", \"value\": 20000}]\n"
-        "}\n\n"
-        "If there is not enough numeric data, return:\n"
-        "{\n"
-        "  \"type\": \"chart_error\",\n"
-        "  \"message\": \"그래프를 만들 수 있는 수치 데이터가 부족합니다.\"\n"
-        "}\n"
-    )
-
-    system_prompt = core_prompt + (visual_mode_prompt if is_visual_request(question) else text_mode_prompt + "\n" + intent_prompt)
+    system_prompt = core_prompt + text_mode_prompt + "\n" + intent_prompt
     history_block = (
         "[Previous Conversation History - continuity only, not evidence]\n"
         f"{clip_text(analysis_text, 4000)}\n\n"
