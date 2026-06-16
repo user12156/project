@@ -2,7 +2,7 @@
 // TypeScript 변경 표시: 기존 JS 로직은 유지하면서 함수 인자와 화면 props에 실제 타입을 붙여 TypeScript 검사를 통과하게 했습니다.
 // 초보자 안내: 사용자가 실제로 보게 되는 한 화면 단위의 React 페이지 컴포넌트입니다.
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { FiChevronLeft, FiChevronRight, FiFileText, FiGrid, FiImage, FiPaperclip, FiRefreshCcw } from 'react-icons/fi';
@@ -417,6 +417,80 @@ const EvidenceMarkdown = ({ text }) => {
         </div>
       )}
     </>
+  );
+};
+
+const splitRevealChunks = (text = '') => {
+  const chunks: string[] = [];
+  String(text || '')
+    .split('\n')
+    .forEach((line) => {
+      if (!line.trim()) {
+        chunks.push('');
+        return;
+      }
+
+      const isStructuredLine = /^(\s*[-*+]\s+|\s*\d+[.)]\s+|\s{0,3}#{1,6}\s+|\s*\|)/.test(line);
+      const sentenceParts = line.match(/[^.!?。！？\n]+[.!?。！？]?/g) || [line];
+      const shouldSplitSentences = !isStructuredLine && line.length > 72 && sentenceParts.length > 1;
+
+      if (shouldSplitSentences) {
+        sentenceParts.map((part) => part.trim()).filter(Boolean).forEach((part) => chunks.push(part));
+        return;
+      }
+
+      chunks.push(line);
+    });
+
+  return chunks.length > 0 ? chunks : [''];
+};
+
+const shouldRevealMessage = (message: any = {}) => {
+  if (!message?.createdAt || !String(message.id || '').startsWith('ai-')) return false;
+  const createdAt = new Date(message.createdAt).getTime();
+  return Number.isFinite(createdAt) && Date.now() - createdAt < 9000;
+};
+
+const ProgressiveEvidenceMarkdown = ({ text, animate = false, onProgress }: { text: string; animate?: boolean; onProgress?: () => void }) => {
+  const chunks = useMemo(() => splitRevealChunks(text), [text]);
+  const [visibleCount, setVisibleCount] = useState(() => (animate ? 1 : chunks.length));
+  const isComplete = visibleCount >= chunks.length;
+
+  useEffect(() => {
+    if (!animate) {
+      setVisibleCount(chunks.length);
+      return undefined;
+    }
+
+    setVisibleCount(1);
+    if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      setVisibleCount(chunks.length);
+      return undefined;
+    }
+
+    const timer = window.setInterval(() => {
+      setVisibleCount((current) => {
+        const next = Math.min(current + 1, chunks.length);
+        if (next >= chunks.length) window.clearInterval(timer);
+        return next;
+      });
+      onProgress?.();
+    }, 165);
+
+    return () => window.clearInterval(timer);
+  }, [animate, chunks.length, onProgress]);
+
+  useEffect(() => {
+    if (animate) onProgress?.();
+  }, [animate, visibleCount, onProgress]);
+
+  const visibleText = chunks.slice(0, visibleCount).join('\n');
+
+  return (
+    <div className={animate && !isComplete ? 'line-reveal active' : 'line-reveal'}>
+      <EvidenceMarkdown text={visibleText} />
+      {animate && !isComplete && <span className="line-reveal-caret" aria-hidden="true" />}
+    </div>
   );
 };
 
@@ -1597,6 +1671,14 @@ function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, c
     target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   };
 
+  const scrollToLatestMessage = useCallback(() => {
+    const area = scrollRef.current;
+    if (!area) return;
+    window.requestAnimationFrame(() => {
+      area.scrollTo({ top: area.scrollHeight, behavior: 'smooth' });
+    });
+  }, []);
+
   return (
     <Container>
       <input type="file" ref={fileInputRef} onChange={handleFileChange} style={{ display: 'none' }} multiple />
@@ -1761,7 +1843,13 @@ function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, c
                 {message.role === 'ai' ? (
                   <AiRow>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxWidth: '80%' }}>
-                      <div className="ai-box markdown-body"><EvidenceMarkdown text={message.text} /></div>
+                      <div className="ai-box markdown-body">
+                        <ProgressiveEvidenceMarkdown
+                          text={message.text}
+                          animate={shouldRevealMessage(message)}
+                          onProgress={scrollToLatestMessage}
+                        />
+                      </div>
                       {message.suggestedQuestions && message.suggestedQuestions.length > 0 && (
                         <div className="suggested-questions">
                           {message.suggestedQuestions.map((q, idx) => (

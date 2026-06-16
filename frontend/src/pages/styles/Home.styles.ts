@@ -131,7 +131,7 @@ export const MainDashboard = styled.div`
   @media (max-width: 760px) {
     justify-content: flex-start;
     /* 💡 화면이 작아졌을 때 위쪽 여백(padding-top)을 넉넉하게 줘서 답답함을 없앱니다. */
-    padding: 44px 0 28px 0; 
+    padding: 32px 0 28px 0;
 
     h2 {
       line-height: 1.35;
@@ -191,8 +191,38 @@ export const GridContainer = styled.div`
   }
 
   @media (max-width: 760px) {
-    gap: 14px;
+    gap: 12px;
     margin-bottom: 24px;
+  }
+`;
+
+export const HwpNotice = styled.p`
+  width: min(100%, 1040px);
+  margin: -14px 0 0;
+  padding: 12px 16px;
+  border: 1px solid rgba(14, 148, 147, 0.18);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.64);
+  color: #475569;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.55;
+  text-align: center;
+  word-break: keep-all;
+
+  span {
+    display: block;
+  }
+
+  span + span {
+    margin-top: 3px;
+  }
+
+  @media (max-width: 760px) {
+    margin-top: -8px;
+    padding: 9px 12px;
+    font-size: 11.5px;
+    line-height: 1.45;
   }
 `;
 
@@ -263,7 +293,7 @@ export const FeatureCard = styled.div<{ $bgGradient?: string }>`
   }
 
   @media (max-width: 760px) {
-    min-height: 124px;
+    min-height: 116px;
     flex-direction: row;
     align-items: center;
     justify-content: flex-start;

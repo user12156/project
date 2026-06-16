@@ -112,6 +112,9 @@ export const authAPI = {
   googleLogin: (idToken: string) =>
     apiClient.post('/api/auth/google', { id_token: idToken }),
 
+  googleConfig: () =>
+    apiClient.get('/api/auth/google/config'),
+
   kakaoLogin: (code: string, redirectUri?: string) =>
     apiClient.post('/api/auth/kakao', { code, redirect_uri: redirectUri }),
 

@@ -34,7 +34,7 @@ function FeatureGrid() {
       <FeatureCard>
         <div className="icon-wrap"><i className="fa-solid fa-user-group"></i></div>
         <div>
-          <h3>작업공간</h3>
+          <h3>공유작업공간</h3>
           <p>초대 코드로 팀원을 초대하고 분석 결과를 함께 검토합니다.</p>
         </div>
       </FeatureCard>

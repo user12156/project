@@ -51,6 +51,11 @@ def serialize_user(user) -> AuthUser:
     return AuthUser(id=str(user["_id"]), username=user.get("display_name") or user["username"])
 
 
+@router.get("/google/config")
+async def google_config() -> dict[str, str]:
+    return {"client_id": settings.google_client_id}
+
+
 @router.get("/kakao/config")
 async def kakao_config() -> dict[str, str]:
     return {

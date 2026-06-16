@@ -1,3 +1,6 @@
+# 초보자 안내: 문서 미리보기 PDF를 만드는 API 라우터입니다.
+# 프론트엔드가 업로드 파일을 보내면 백엔드가 PDF bytes로 변환해 브라우저 미리보기 창에 띄웁니다.
+
 from fastapi import APIRouter, File, Response, UploadFile
 
 from app.core.uploads import read_upload_content

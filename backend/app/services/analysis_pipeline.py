@@ -233,6 +233,37 @@ def _with_korean_answer(payload: dict) -> dict:
     return translate_analysis_payload(payload)
 
 
+def _llm_first_payload(
+    *,
+    fallback_answer: dict,
+    llm_answer: dict,
+    llm_key_received: bool,
+    llm_key_source: str,
+    suggested_questions: list[str],
+    web_docs: list[dict] | None = None,
+    llm_error: str | None = None,
+) -> dict:
+    """Return a key-backed LLM answer while keeping local extraction as metadata."""
+
+    return _with_korean_answer({
+        **fallback_answer,
+        "answer": llm_answer.get("answer", ""),
+        "keywords": fallback_answer.get("keywords", []) or llm_answer.get("keywords", []),
+        "metrics": fallback_answer.get("metrics", []),
+        "topics": fallback_answer.get("topics", []),
+        "relevant_chunks": fallback_answer.get("relevant_chunks", []),
+        "intent": llm_answer.get("intent", fallback_answer.get("intent", "분석")),
+        "llm_used": True,
+        "llm_key_received": llm_key_received,
+        "llm_key_source": llm_key_source,
+        "provider": llm_answer.get("provider"),
+        "model": llm_answer.get("model"),
+        "llm_error": llm_error,
+        "suggested_questions": llm_answer.get("suggested_questions", []) or suggested_questions,
+        "web_sources": web_docs or [],
+    })
+
+
 def _resolve_llm_provider_and_keys(
     provider: str,
     openai_api_key: str | None,
@@ -352,6 +383,22 @@ def run_analysis_pipeline(
         })
 
     visual_config = _extract_json_object(llm_answer["answer"]) if is_visual_request else None
+    if visual_config and visual_config.get("type") == "chart_error":
+        return {
+            **fallback_answer,
+            "answer": json.dumps(visual_config, ensure_ascii=False),
+            "keywords": fallback_answer.get("keywords", []),
+            "metrics": fallback_answer.get("metrics", []),
+            "topics": fallback_answer.get("topics", []),
+            "relevant_chunks": fallback_answer.get("relevant_chunks", []),
+            "intent": fallback_answer.get("intent", "visual"),
+            "llm_used": True,
+            "llm_key_received": llm_key_received,
+            "llm_key_source": llm_key_source,
+            "provider": llm_answer.get("provider"),
+            "model": llm_answer.get("model"),
+            "suggested_questions": llm_answer.get("suggested_questions", []),
+        }
     if visual_config and _validate_visual_config(visual_config, extracted_docs):
         return {
             **fallback_answer,
@@ -369,6 +416,19 @@ def run_analysis_pipeline(
             "suggested_questions": llm_answer.get("suggested_questions", []),
         }
 
+    if is_visual_request and visual_config:
+        return _with_korean_answer({
+            **fallback_answer,
+            "answer": build_concise_fallback_answer(question, fallback_answer),
+            "llm_used": False,
+            "provider": llm_answer.get("provider"),
+            "model": llm_answer.get("model"),
+            "llm_error": "PaperMate가 시각화 데이터에서 업로드 문서에 없는 수치를 감지해 로컬 근거 답변으로 전환했습니다.",
+            "llm_key_received": llm_key_received,
+            "llm_key_source": llm_key_source,
+            "suggested_questions": local_suggested_questions,
+        })
+
     grounding = validate_grounding(
         llm_answer["answer"],
         [*extracted_docs, *web_docs],
@@ -376,36 +436,21 @@ def run_analysis_pipeline(
         fallback_answer.get("metrics", []),
     )
     if not grounding.get("passed"):
-        if not grounding.get("unsupported_numbers"):
-            return _with_korean_answer({
-                **fallback_answer,
-                "answer": _merge_llm_answer_with_evidence(question, llm_answer["answer"], fallback_answer),
-                "keywords": fallback_answer.get("keywords", []) or llm_answer.get("keywords", []),
-                "metrics": fallback_answer.get("metrics", []),
-                "topics": fallback_answer.get("topics", []),
-                "relevant_chunks": fallback_answer.get("relevant_chunks", []),
-                "intent": llm_answer.get("intent", fallback_answer.get("intent", "분석")),
-                "llm_used": True,
-                "llm_key_received": llm_key_received,
-                "llm_key_source": llm_key_source,
-                "provider": llm_answer.get("provider"),
-                "model": llm_answer.get("model"),
-                "llm_error": "문서 근거 점검에서 낮은 단어 일치도가 감지되어 관련 문서 구간을 함께 표시했습니다.",
-                "suggested_questions": llm_answer.get("suggested_questions", []) or local_suggested_questions,
-                "web_sources": web_docs,
-            })
-
-        return _with_korean_answer({
-            **fallback_answer,
-            "answer": build_concise_fallback_answer(question, fallback_answer),
-            "llm_used": False,
-            "provider": llm_answer.get("provider"),
-            "model": llm_answer.get("model"),
-            "llm_error": "PaperMate가 LLM 답변에서 업로드 문서에 없는 수치나 표현을 감지해 문서 추출 결과만 표시했습니다.",
-            "llm_key_received": llm_key_received,
-            "llm_key_source": llm_key_source,
-            "suggested_questions": local_suggested_questions,
-        })
+        reason = (
+            "문서 근거 점검에서 업로드 문서와 직접 일치하지 않는 수치가 감지되었지만, "
+            "API 키가 있어 LLM 답변을 우선 표시했습니다."
+            if grounding.get("unsupported_numbers")
+            else "문서 근거 점검에서 낮은 단어 일치도가 감지되었지만, API 키가 있어 LLM 답변을 우선 표시했습니다."
+        )
+        return _llm_first_payload(
+            fallback_answer=fallback_answer,
+            llm_answer=llm_answer,
+            llm_key_received=llm_key_received,
+            llm_key_source=llm_key_source,
+            suggested_questions=local_suggested_questions,
+            web_docs=web_docs,
+            llm_error=reason,
+        )
 
     if visual_config:
         return {
@@ -424,19 +469,11 @@ def run_analysis_pipeline(
             "suggested_questions": llm_answer.get("suggested_questions", []),
         }
 
-    return _with_korean_answer({
-        **fallback_answer,
-        "answer": _merge_llm_answer_with_evidence(question, llm_answer["answer"], fallback_answer),
-        "keywords": fallback_answer.get("keywords", []) or llm_answer.get("keywords", []),
-        "metrics": fallback_answer.get("metrics", []),
-        "topics": fallback_answer.get("topics", []),
-        "relevant_chunks": fallback_answer.get("relevant_chunks", []),
-        "intent": llm_answer.get("intent", fallback_answer.get("intent", "분석")),
-        "llm_used": True,
-        "llm_key_received": llm_key_received,
-        "llm_key_source": llm_key_source,
-        "provider": llm_answer.get("provider"),
-        "model": llm_answer.get("model"),
-        "suggested_questions": llm_answer.get("suggested_questions", []),
-        "web_sources": web_docs,
-    })
+    return _llm_first_payload(
+        fallback_answer=fallback_answer,
+        llm_answer=llm_answer,
+        llm_key_received=llm_key_received,
+        llm_key_source=llm_key_source,
+        suggested_questions=local_suggested_questions,
+        web_docs=web_docs,
+    )

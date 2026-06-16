@@ -9,6 +9,13 @@ MAX_CONTEXT_CHARS = 400000
 MAX_GEMINI_CONTEXT_CHARS = 24000
 MIN_GEMINI_CONTEXT_CHARS = 8000
 MAX_MULTIMODAL_IMAGES = 4
+SUPPORTED_IMAGE_PREFIXES = (
+    "data:image/png;base64,",
+    "data:image/jpeg;base64,",
+    "data:image/jpg;base64,",
+    "data:image/webp;base64,",
+    "data:image/gif;base64,",
+)
 
 
 def clip_text(text: str, limit: int = MAX_CONTEXT_CHARS) -> str:
@@ -96,6 +103,8 @@ def multimodal_image_inputs(extracted_docs: list[dict], limit: int = MAX_MULTIMO
             data_url = asset.get("data_url")
             if not data_url:
                 continue
+            if not data_url.lower().startswith(SUPPORTED_IMAGE_PREFIXES):
+                continue
             label = asset.get("source_label") or asset.get("name") or "document image"
             inputs.append(
                 {
@@ -147,8 +156,6 @@ def is_visual_request(question: str) -> bool:
         "선형",
         "선 그래프",
         "꺾은선",
-        "원형",
-        "파이",
         "마인드맵",
         "비교표",
         "json",
@@ -170,7 +177,6 @@ def is_visual_request(question: str) -> bool:
             "막대",
             "선 그래프",
             "꺾은선",
-            "원형",
             "마인드맵",
         )
     ):
@@ -221,6 +227,7 @@ def build_prompts(
         "- 🚨 Rule 5 [Mandatory Document-Based Follow-Up Chips]: At the very end of your text response, you MUST append the exact separator '===SUGGESTED_QUESTIONS==='.\n"
         "After the separator, generate exactly 4 short follow-up chips based only on the uploaded document context: exactly 2 visualization recommendations and exactly 2 related questions.\n"
         "For the 2 visualization recommendations, prioritize document-supported trends, comparisons, rankings, categories, time series, region/year/group breakdowns, and metrics. Do NOT recommend a visualization for a single isolated point in time.\n"
+        "If a pie chart, donut chart, circular chart, scatter plot, or correlation plot would be suggested, replace it with the closest supported bar or line chart and phrase the chip as a bar/line graph request for the current version.\n"
         "For the 2 related questions, make simple expected questions that can be answered directly from the uploaded document context. Do not ask about facts outside the document.\n"
         "Format visualization chips EXACTLY like this in Korean: '[추천 시각화: 95점] 2024년 분기별 매출 추이 꺾은선 그래프 그려줘'\n"
         "Format related question chips EXACTLY like this in Korean: '[연관 질문] 문서에서 확인되는 주요 원인은 무엇이야?'\n"
@@ -261,41 +268,53 @@ def build_prompts(
             "- For each excerpt, add a brief reason explaining why it is important and include the source label.\n"
             "- Preserve the wording of source passages as much as possible, but keep excerpts short.\n"
         ),
-    }.get(intent, (
-        "[Detected Request Mode: GENERAL]\n"
-        "- Answer the user's question directly using the uploaded document context.\n"
-    ))
+    }.get(
+        intent,
+        (
+            "[Detected Request Mode: GENERAL]\n"
+            "- Answer the user's question directly using the uploaded document context.\n"
+        ),
+    )
 
     visual_mode_prompt = (
         "-----------------------------------\n"
-        "[Task: 📊 Data Visualization (Table/Chart/Mindmap)]\n"
-        "- Auto-Routing: Analyze the data characteristics and independently decide the optimal visual format (table, bar, line, pie, mindmap).\n"
-        "- [Year/Material Separation Rule - CRITICAL]: When the document has values by year, source file, material, region, experiment group, model, or category, those must be represented as separate chart series or separate table columns. Never merge them into one continuous line unless the user explicitly asks for a single combined timeline.\n"
-        "- [Monthly Trend Rule - CRITICAL]: For monthly trend graphs, the X-axis MUST be the month labels such as '1월', '2월', ... '12월'. Each year must be a different series. Do NOT flatten the data into labels like '2024-03', '2025-03', '2026-03' on one line.\n"
-        "- [Graph Request Priority]: If the user asks for a graph/chart, return type='chart' with chartType, xAxisKey, series, and data. Do not downgrade to a table just because the original data came from a table.\n"
-        "- [Grounded Visual Data]: Every data value in the JSON must be directly extractable from the uploaded document context. If a month/year/source value is missing, use null rather than inventing a value.\n"
-        "- 📊 [Data Extraction Rule]: For charts (bar, line, pie), you MUST extract multiple data points. DO NOT generate a chart with only a single data point on the X-axis.\n"
-        "- 🚨 [STRICT JSON RULE]: When requested to visualize, you MUST return ONLY a single, raw JSON object. DO NOT include markdown code blocks, DO NOT add explanatory text outside the JSON, and DO NOT append 'SUGGESTED_QUESTIONS'.\n"
-        "- [Renderer Responsibility Rule - CRITICAL]: Do NOT try to fully control final chart rendering details. The backend chart renderer will normalize data, validate keys, and build the final chart option.\n\n"
-        "  [Strict JSON Format]\n"
-        "  {\n"
-        "    \"reasoning_summary\": \"시각화 선택 및 데이터 추출 근거를 한국어로 1~2문장만 간단히 작성하세요.\",\n"
-        "    \"type\": \"chart\",\n"
-        "    \"title\": \"그래프 제목\",\n"
-        "    \"chartType\": \"line\",\n"
-        "    \"template\": \"monthly_trend\",\n"
-        "    \"xAxisKey\": \"month\",\n"
-        "    \"columns\": [{\"key\": \"month\", \"label\": \"월\"}, {\"key\": \"value\", \"label\": \"값\"}],\n"
-        "    \"series\": [{\"dataKey\": \"value\", \"name\": \"값\", \"yAxisId\": \"left\"}],\n"
-        "    \"data\": [{\"month\": \"1월\", \"value\": 20000}]\n"
-        "  }\n"
-        "- 'type' MUST be one of: chart, table, mindmap.\n"
-        "- 'chartType' MUST be one of: bar, line, pie if type is chart.\n"
-        "- 'series' is required for charts except pie.\n"
+        "[Task: Data Visualization]\n"
+        "- When requested to visualize, return ONLY a single raw JSON object.\n"
+        "- Do not include markdown, code blocks, explanations, or SUGGESTED_QUESTIONS.\n"
+        "- If the user asks for a graph/chart, return type='chart'.\n"
+        "- Supported chartType: line, bar only.\n"
+        "- Use only values directly found in the uploaded document context.\n"
+        "- Do not invent labels, categories, dates, years, percentages, counts, scores, or numeric values.\n"
+        "- If a value is missing, use null.\n"
+        "- Numeric values should be JSON numbers when possible.\n"
+        "- For monthly trend graphs, xAxisKey must be 'month' and labels must be '1월'...'12월'. Each year should be a separate series.\n"
+        "- xAxisKey must exist in every data row.\n"
+        "- Each series.dataKey must exist in data rows.\n\n"
+        "Return this JSON shape for charts:\n"
+        "{\n"
+        "  \"reasoning_summary\": \"한국어로 1문장만 작성\",\n"
+        "  \"type\": \"chart\",\n"
+        "  \"title\": \"그래프 제목\",\n"
+        "  \"chartType\": \"line\",\n"
+        "  \"xAxisKey\": \"month\",\n"
+        "  \"columns\": [{\"key\": \"month\", \"label\": \"월\"}, {\"key\": \"value\", \"label\": \"값\"}],\n"
+        "  \"series\": [{\"dataKey\": \"value\", \"name\": \"값\", \"yAxisId\": \"left\"}],\n"
+        "  \"data\": [{\"month\": \"1월\", \"value\": 20000}]\n"
+        "}\n\n"
+        "If there is not enough numeric data, return:\n"
+        "{\n"
+        "  \"type\": \"chart_error\",\n"
+        "  \"message\": \"그래프를 만들 수 있는 수치 데이터가 부족합니다.\"\n"
+        "}\n"
     )
 
     system_prompt = core_prompt + (visual_mode_prompt if is_visual_request(question) else text_mode_prompt + "\n" + intent_prompt)
-    history_block = f"[Previous Conversation History]\n{analysis_text}\n\n" if analysis_text else ""
+    history_block = (
+        "[Previous Conversation History - continuity only, not evidence]\n"
+        f"{clip_text(analysis_text, 4000)}\n\n"
+        if analysis_text
+        else ""
+    )
     doc_block = f"[Uploaded Document Context]\n{document_context}\n\n" if document_context else ""
     web_block = f"[Web Search Context]\n{web_context}\n\n" if web_context else ""
 
@@ -308,7 +327,7 @@ def build_prompts(
 {intent} - {_intent_label(intent)}
 
 {doc_block}{web_block}{history_block}
-Use the uploaded document context as the only factual source unless a Web Search Context block is present. If Web Search Context is present, use it only to compare with the uploaded document and clearly label web-derived facts. Use previous conversation history only to understand continuity, never as a citation source or data source. If the answer is not directly supported by the uploaded document context or the explicit web context, say that it cannot be confirmed.
+Answer the current user request directly. Do not repeat or summarize the previous answer unless the current request explicitly asks for repetition. Use the uploaded document context as the only factual source unless a Web Search Context block is present. If Web Search Context is present, use it only to compare with the uploaded document and clearly label web-derived facts. Use previous conversation history only to understand continuity, never as a citation source, data source, or answer template. If the answer is not directly supported by the uploaded document context or the explicit web context, say that it cannot be confirmed.
 Important: Even if the uploaded document context is English, write the final analysis and summary in Korean.
 """
     else:
@@ -320,7 +339,7 @@ Important: Even if the uploaded document context is English, write the final ana
 analysis - {_intent_label("analysis")}
 
 {doc_block}{web_block}{history_block}
-Use the uploaded document context as the only factual source unless a Web Search Context block is present. If Web Search Context is present, use it only to compare with the uploaded document and clearly label web-derived facts. Use previous conversation history only to understand continuity, never as a citation source or data source. If the answer is not directly supported by the uploaded document context or the explicit web context, say that it cannot be confirmed.
+Answer the current user request directly. Do not repeat or summarize the previous answer unless the current request explicitly asks for repetition. Use the uploaded document context as the only factual source unless a Web Search Context block is present. If Web Search Context is present, use it only to compare with the uploaded document and clearly label web-derived facts. Use previous conversation history only to understand continuity, never as a citation source, data source, or answer template. If the answer is not directly supported by the uploaded document context or the explicit web context, say that it cannot be confirmed.
 Important: Even if the uploaded document context is English, write the final analysis and summary in Korean.
 """
     return system_prompt, user_prompt

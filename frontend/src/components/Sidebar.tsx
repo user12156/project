@@ -118,9 +118,9 @@ function Sidebar({
             <SidebarIcon active={viewMode === '내 프로젝트'}><FiFolder /></SidebarIcon>
             <span className="menu-text">프로젝트</span>
           </MenuBtn>
-          <MenuBtn $active={viewMode === '공유'} onClick={() => onMenuClick('공유')}>
-            <SidebarIcon active={viewMode === '공유'}><FiShare2 /></SidebarIcon>
-            <span className="menu-text">작업공간</span>
+          <MenuBtn $active={viewMode === '공유작업공간'} onClick={() => onMenuClick('공유작업공간')}>
+            <SidebarIcon active={viewMode === '공유작업공간'}><FiShare2 /></SidebarIcon>
+            <span className="menu-text">공유작업공간</span>
           </MenuBtn>
         </BottomMenuGroup>
 

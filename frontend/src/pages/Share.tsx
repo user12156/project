@@ -20,6 +20,10 @@ import {
   CoopPanelToggle,
   VisualModalOverlay,
   VisualModalPanel,
+  ProjectPickerOverlay,
+  ProjectPickerPanel,
+  ProjectPickerGrid,
+  VisualPickerCard,
 } from './styles/Share.styles';
 import {
   getProjectsKey,
@@ -55,6 +59,8 @@ const fallbackRoom = {
   mainProjectId: '',
   members: [],
   loadedProjectIds: [],
+  importedVisualIds: [],
+  importedVisuals: [],
   comments: [],
 };
 
@@ -71,6 +77,8 @@ const sanitizeRoom = (room = fallbackRoom) => ({
   ...fallbackRoom,
   ...(room && typeof room === 'object' ? room : {}),
   loadedProjectIds: asArray(room?.loadedProjectIds).filter((id) => !legacyDummyProjectIds.has(id)),
+  importedVisualIds: asArray(room?.importedVisualIds),
+  importedVisuals: asArray(room?.importedVisuals),
   members: asArray(room?.members),
   comments: asArray(room?.comments).filter(
     (comment) =>
@@ -125,6 +133,15 @@ const getProjectOwner = (project, room) =>
   '프로젝트 주인';
 
 const normalizeVisualId = (id) => String(id || '').replace(/^(thread-|visual-|saved-)+/, '');
+
+const getNumericOrder = (value, fallback = 0) => {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  const parsedDate = Date.parse(String(value || ''));
+  if (Number.isFinite(parsedDate)) return parsedDate;
+  const digits = String(value || '').match(/\d{6,}/g);
+  if (digits?.length) return Number(digits[digits.length - 1]);
+  return fallback;
+};
 
 const isGraphRequestBetter = (text = '') => /그래프|차트|막대|꺾은선|선\s*그래프|graph|chart|line|bar/i.test(String(text));
 
@@ -301,6 +318,7 @@ function ShareC({ onRestoreTrigger, username = 'Guest', initialProject = null })
   const [notice, setNotice] = useState('');
   const [imageDataUrls, setImageDataUrls] = useState({});
   const [selectedVisualAsset, setSelectedVisualAsset] = useState(null);
+  const [isVisualPickerOpen, setIsVisualPickerOpen] = useState(false);
   const [isCoopPanelCollapsed, setIsCoopPanelCollapsed] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
 
@@ -359,6 +377,23 @@ function ShareC({ onRestoreTrigger, username = 'Guest', initialProject = null })
     [activeProject?.id, loadedProjects]
   );
   const projectOwner = useMemo(() => getProjectOwner(activeProject, room), [activeProject, room]);
+  const importedVisualIdSet = useMemo(
+    () => new Set(asArray(room.importedVisualIds).map(normalizeVisualId)),
+    [room.importedVisualIds]
+  );
+  const importedVisualOrderMap = useMemo(() => {
+    const entries = asArray(room.importedVisuals)
+      .map((item, index) => [
+        normalizeVisualId(item?.id || item?.visualId),
+        getNumericOrder(item?.importedAt || item?.time || item?.id, index + 1),
+      ])
+      .filter(([id]) => id);
+    return new Map(entries);
+  }, [room.importedVisuals]);
+  const activeProjectVisuals = useMemo(
+    () => asArray(activeProject?.visuals).filter((visual) => visual?.id && hasVisualPayload(visual)),
+    [activeProject?.visuals]
+  );
   const sortedMembers = useMemo(() => {
     const members = asArray(room.members);
     const ownerMember = members.find((member) => member.name === projectOwner);
@@ -404,6 +439,7 @@ function ShareC({ onRestoreTrigger, username = 'Guest', initialProject = null })
       ...image,
       type: 'image',
       dataUrl: image.dataUrl || imageDataUrls[image.id] || '',
+      timelineOrder: getNumericOrder(image.createdAt || image.time || image.id),
       projectId: project.id,
       projectTitle: project.title,
       sourceType,
@@ -413,7 +449,7 @@ function ShareC({ onRestoreTrigger, username = 'Guest', initialProject = null })
     const threadItems = asArray(project.thread)
       .filter((item) => ['user', 'ai', 'asset'].includes(item.role) || item.rows)
       .filter((item) => !(item.role === 'ai' && isIntroMessage(item.text)))
-      .map((item) => {
+      .map((item, index) => {
         const promptText = lastQuestionText;
         if (item.role === 'user') lastQuestionText = item.text || '';
         const mergedItem = {
@@ -436,6 +472,7 @@ function ShareC({ onRestoreTrigger, username = 'Guest', initialProject = null })
           title: item.role === 'user' ? '질문' : mergedItem.title || (item.role === 'ai' ? 'AI 답변' : '분석 결과'),
           text: mergedItem.text || '',
           rows: mergedItem.rows,
+          timelineOrder: getNumericOrder(mergedItem.createdAt || mergedItem.date || mergedItem.time || mergedItem.id || item.id, index + 1),
           projectId: project.id,
           projectTitle: project.title,
           sourceType,
@@ -450,7 +487,12 @@ function ShareC({ onRestoreTrigger, username = 'Guest', initialProject = null })
       });
 
     const orphanVisuals = asArray(project.visuals)
-      .filter((visual) => !visualIdsFromThread.has(normalizeVisualId(visual.id)))
+      .filter((visual) => {
+        const visualId = normalizeVisualId(visual.id);
+        if (visualIdsFromThread.has(visualId)) return false;
+        if (sourceType !== 'main') return true;
+        return importedVisualIdSet.has(visualId);
+      })
       .map((visual) => ({
         ...visual,
         id: visual.id,
@@ -460,21 +502,34 @@ function ShareC({ onRestoreTrigger, username = 'Guest', initialProject = null })
         text: visual.desc || '분석 페이지에서 저장된 시각화 자료입니다.',
         details: visual.details || [],
         rows: visual.rows,
+        timelineOrder: importedVisualOrderMap.get(normalizeVisualId(visual.id)) || getNumericOrder(visual.createdAt || visual.date || visual.time || visual.id),
         projectId: project.id,
         projectTitle: project.title,
         sourceType,
       }));
 
     return [...threadItems, ...orphanVisuals, ...images].filter(hasTimelineAssetContent);
-  }, [imageDataUrls]);
+  }, [imageDataUrls, importedVisualIdSet, importedVisualOrderMap]);
 
   const projectAssets = useMemo(() => {
     if (!activeProject) return [];
     return [
       ...supportProjects.flatMap((project) => collectProjectAssets(project, 'support')),
       ...collectProjectAssets(activeProject, 'main'),
-    ];
+    ].sort((a, b) => {
+      const orderDiff = (a.timelineOrder || 0) - (b.timelineOrder || 0);
+      if (orderDiff !== 0) return orderDiff;
+      return String(a.id || '').localeCompare(String(b.id || ''));
+    });
   }, [activeProject, collectProjectAssets, supportProjects]);
+
+  const visibleProjectAssets = useMemo(
+    () =>
+      projectAssets
+        .map((asset, index) => ({ ...asset, timelineNumber: index + 1 }))
+        .reverse(),
+    [projectAssets]
+  );
 
   useEffect(() => {
     if (!activeShareCode || !activeProject?.id) return;
@@ -607,7 +662,7 @@ function ShareC({ onRestoreTrigger, username = 'Guest', initialProject = null })
       comments: asArray(sharedRoom.comments),
       members: alreadyJoined ? asArray(sharedRoom.members) : [...asArray(sharedRoom.members), { id: Date.now(), name: username }],
     });
-    setNotice(`"${initialProject.projectTitle || '공유 분석'}" 공유 토론방을 불러왔습니다.`);
+    setNotice(`"${initialProject.projectTitle || '공유작업공간 분석'}" 공유작업공간을 불러왔습니다.`);
   }, [initialProject, username]);
 
   useEffect(() => {
@@ -624,7 +679,7 @@ function ShareC({ onRestoreTrigger, username = 'Guest', initialProject = null })
     requestAnimationFrame(() => {
       assetStartRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
-  }, [projectAssets.length, room.loadedProjectIds]);
+  }, [projectAssets.length, room.loadedProjectIds, room.importedVisualIds]);
 
   useEffect(() => {
     const imagesWithData = allProjects.flatMap((project) =>
@@ -695,7 +750,7 @@ function ShareC({ onRestoreTrigger, username = 'Guest', initialProject = null })
     const matchedProject = allProjects.find((project) => project.inviteCode === normalizedCode);
 
     if (!matchedProject) {
-      setNotice('초대코드를 정확히 입력해야 프로젝트 토론방에 참여할 수 있습니다.');
+      setNotice('초대코드를 정확히 입력해야 프로젝트 공유작업공간에 참여할 수 있습니다.');
       return;
     }
 
@@ -721,7 +776,7 @@ function ShareC({ onRestoreTrigger, username = 'Guest', initialProject = null })
       comments: mergedComments,
       members: alreadyJoined ? asArray(sharedRoom.members) : [...asArray(sharedRoom.members), { id: Date.now(), name: username }],
     });
-    setNotice(`참여 완료: "${matchedProject.title}" 결과 토론방을 불러왔습니다.`);
+    setNotice(`참여 완료: "${matchedProject.title}" 결과 공유작업공간을 불러왔습니다.`);
   };
 
   const createNewSharedRoom = () => {
@@ -741,7 +796,7 @@ function ShareC({ onRestoreTrigger, username = 'Guest', initialProject = null })
     setSelectedVisualAsset(null);
     setRoom(nextRoom);
     writeJson(getShareRoomKey(), nextRoom);
-    setNotice(`새 공유방을 생성했습니다. 초대코드: ${inviteCode}`);
+    setNotice(`새 공유작업공간을 생성했습니다. 초대코드: ${inviteCode}`);
   };
 
   const loadSupportProjectByCode = () => {
@@ -752,7 +807,7 @@ function ShareC({ onRestoreTrigger, username = 'Guest', initialProject = null })
     }
 
     if (!activeProject) {
-      setNotice('먼저 오른쪽 초대코드로 메인 프로젝트 토론방에 참여해주세요.');
+      setNotice('먼저 오른쪽 초대코드로 메인 프로젝트 공유작업공간에 참여해주세요.');
       return;
     }
 
@@ -777,6 +832,53 @@ function ShareC({ onRestoreTrigger, username = 'Guest', initialProject = null })
     setNotice(`비교 자료 추가: "${supportProject.title}" 프로젝트 내용을 본문에 붙였습니다.`);
   };
 
+  const handleLoadProjectVisuals = () => {
+    if (!activeProject) {
+      setNotice('먼저 초대코드로 프로젝트를 불러온 뒤 시각화 자료를 불러와주세요.');
+      return;
+    }
+
+    if (activeProjectVisuals.length === 0) {
+      setNotice('이 프로젝트에 저장된 시각화 자료가 없습니다. 분석 페이지에서 표, 이미지, 그래프를 만든 뒤 저장해주세요.');
+      return;
+    }
+
+    setIsVisualPickerOpen(true);
+    setNotice(`"${activeProject.title}" 시각화 보관함에서 가져올 자료를 선택해주세요.`);
+  };
+
+  const handleImportVisualAsset = (visual) => {
+    if (!activeProject || !visual?.id) return;
+    const visualId = normalizeVisualId(visual.id);
+    const alreadyImported = importedVisualIdSet.has(visualId);
+
+    setRoom((prev) => ({
+      ...prev,
+      loadedProjectIds: Array.from(new Set([...prev.loadedProjectIds, activeProject.id])),
+      importedVisualIds: Array.from(new Set([...asArray(prev.importedVisualIds), visual.id, visualId])),
+      importedVisuals: alreadyImported
+        ? asArray(prev.importedVisuals)
+        : [
+            ...asArray(prev.importedVisuals),
+            {
+              id: visual.id,
+              visualId,
+              projectId: activeProject.id,
+              importedAt: Date.now(),
+            },
+          ],
+    }));
+
+    shouldScrollToAssetsRef.current = true;
+    setIsVisualPickerOpen(false);
+    window.setTimeout(() => assetStartRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
+    setNotice(
+      alreadyImported
+        ? `"${visual.title || '시각화 자료'}"는 이미 토론 자료에 불러와져 있습니다.`
+        : `"${visual.title || '시각화 자료'}"를 토론 자료에 불러왔습니다.`
+    );
+  };
+
   const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const imageFiles = Array.from(event.target.files || []).filter((file: File) => file.type.startsWith('image/'));
     event.target.value = '';
@@ -797,6 +899,7 @@ function ShareC({ onRestoreTrigger, username = 'Guest', initialProject = null })
         title: file.name,
         dataUrl: await readFileAsDataUrl(file),
         time: formatTime(),
+        createdAt: Date.now() + index,
         uploadedBy: username,
       }))
     );
@@ -887,11 +990,11 @@ function ShareC({ onRestoreTrigger, username = 'Guest', initialProject = null })
 
   const handleSaveSharedProjectCard = async () => {
     if (!activeProject) {
-      setNotice('먼저 초대코드로 메인 프로젝트 토론방에 참여해주세요.');
+      setNotice('먼저 초대코드로 메인 프로젝트 공유작업공간에 참여해주세요.');
       return;
     }
 
-    const title = window.prompt('공유 분석 프로젝트 제목을 입력하세요.', `${activeProject.title} 공유 분석`);
+    const title = window.prompt('공유작업공간 분석 프로젝트 제목을 입력하세요.', `${activeProject.title} 공유작업공간 분석`);
     if (!title?.trim()) return;
 
     const projectId = `shared-analysis-${Date.now()}`;
@@ -918,7 +1021,7 @@ function ShareC({ onRestoreTrigger, username = 'Guest', initialProject = null })
     const sharedProject = {
       id: projectId,
       source: 'shared-discussion',
-      type: '공유 분석',
+      type: '공유작업공간 분석',
       title: title.trim(),
       updatedAt: today,
       date: today,
@@ -957,12 +1060,12 @@ function ShareC({ onRestoreTrigger, username = 'Guest', initialProject = null })
               {
                 id: `user-${projectId}`,
                 role: 'user',
-                text: `${activeProject.title}${supportTitles ? ` / ${supportTitles}` : ''} 공유 분석 저장`,
+                text: `${activeProject.title}${supportTitles ? ` / ${supportTitles}` : ''} 공유작업공간 분석 저장`,
               },
               {
                 id: `ai-${projectId}`,
                 role: 'ai',
-                text: `공유 토론방에서 저장한 분석 카드입니다. 자료 ${projectAssets.length}개와 코멘트 ${projectComments.length}개를 포함합니다.`,
+                text: `공유작업공간에서 저장한 분석 카드입니다. 자료 ${projectAssets.length}개와 코멘트 ${projectComments.length}개를 포함합니다.`,
               },
             ]),
         ...supportProjects.flatMap((project) => asArray(project.thread)),
@@ -1029,6 +1132,8 @@ function ShareC({ onRestoreTrigger, username = 'Guest', initialProject = null })
       joinedCode: inviteCode,
       mainProjectId: projectId,
       loadedProjectIds: [projectId],
+      importedVisualIds: [],
+      importedVisuals: [],
       members: [{ id: Date.now(), name: username, role: 'owner' }],
       comments: storableSharedProject.discussionComments,
     });
@@ -1051,7 +1156,7 @@ function ShareC({ onRestoreTrigger, username = 'Guest', initialProject = null })
 
     setProjects(loadOwnProjects());
     setSharedProjects(loadSharedProjects());
-    setNotice(`"${storableSharedProject.title}" 공유 분석 프로젝트 카드를 저장했습니다. 초대코드: ${inviteCode}`);
+    setNotice(`"${storableSharedProject.title}" 공유작업공간 분석 프로젝트 카드를 저장했습니다. 초대코드: ${inviteCode}`);
   };
 
   const renderVisualPreview = (asset) => {
@@ -1130,7 +1235,7 @@ function ShareC({ onRestoreTrigger, username = 'Guest', initialProject = null })
   const renderHeader = () => (
     <div className="header-area">
       <i className="fa-solid fa-comments menu-toggle"></i>
-      <h2>{activeProject?.title || '공유 토론방'}</h2>
+      <h2>{activeProject?.title || '공유작업공간'}</h2>
     </div>
   );
 
@@ -1147,6 +1252,10 @@ function ShareC({ onRestoreTrigger, username = 'Guest', initialProject = null })
         <i className="fa-regular fa-image"></i>
         이미지 불러오기
       </button>
+      <button type="button" className="visual-load-btn" onClick={handleLoadProjectVisuals}>
+        <i className="fa-solid fa-chart-column"></i>
+        시각화 불러오기
+      </button>
       <div className="support-code-box">
         <button type="button" className="support-load-btn" onClick={loadSupportProjectByCode}>
           <i className="fa-regular fa-folder-open"></i>
@@ -1162,7 +1271,7 @@ function ShareC({ onRestoreTrigger, username = 'Guest', initialProject = null })
           title="클릭하면 복사한 초대코드를 자동으로 넣습니다."
         />
       </div>
-      <span className="hint">메인 토론방에 보조 프로젝트를 붙여 비교합니다.</span>
+      <span className="hint">메인 공유작업공간에 보조 프로젝트를 붙여 비교합니다.</span>
     </ProjectLoadBar>
   );
 
@@ -1183,7 +1292,7 @@ function ShareC({ onRestoreTrigger, username = 'Guest', initialProject = null })
       <div className="project-actions">
         <button type="button" onClick={handleContinueProject}>분석 페이지에서 이어서 작업</button>
         <button type="button" className="save-shared-card" onClick={handleSaveSharedProjectCard}>
-          공유 분석 카드 저장
+          공유작업공간 분석 카드 저장
         </button>
       </div>
     </div>
@@ -1195,14 +1304,17 @@ function ShareC({ onRestoreTrigger, username = 'Guest', initialProject = null })
       <TimelineWrapper>
         {!activeProject ? (
           <div className="empty-state">오른쪽 초대코드를 입력하면 프로젝트 결과와 토론 기록이 표시됩니다.</div>
-        ) : projectAssets.length === 0 ? (
+        ) : visibleProjectAssets.length === 0 ? (
           <div className="empty-state">아직 저장된 결과 자료가 없습니다. 분석 페이지에서 표/차트/그래프를 저장하거나 이미지를 추가해보세요.</div>
-        ) : projectAssets.map((asset, index) => (
+        ) : visibleProjectAssets.map((asset, index) => (
           <TimelineNode key={`${asset.id}-${index}`} $active={index === 0}>
             <div className="dot"></div>
             <div className="card">
-              <div className={`project-label ${asset.sourceType === 'support' ? 'support' : ''}`}>
-                {asset.sourceType === 'support' ? '비교 프로젝트' : '메인 프로젝트'} · {asset.projectTitle}
+              <div className="timeline-card-head">
+                <span className="timeline-number">#{asset.timelineNumber}</span>
+                <div className={`project-label ${asset.sourceType === 'support' ? 'support' : ''}`}>
+                  {asset.sourceType === 'support' ? '비교 프로젝트' : '메인 프로젝트'} · {asset.projectTitle}
+                </div>
               </div>
               <h4>{asset.title}</h4>
               {asset.type === 'question' && (
@@ -1253,7 +1365,7 @@ function ShareC({ onRestoreTrigger, username = 'Guest', initialProject = null })
   const renderCreateRoomBtn = () => (
     <button className="load-btn" type="button" onClick={createNewSharedRoom}>
       <i className="fa-solid fa-rotate-right" aria-hidden="true"></i>
-      새 공유방 생성
+      새 공유작업공간 생성
     </button>
   );
 
@@ -1358,7 +1470,7 @@ function ShareC({ onRestoreTrigger, username = 'Guest', initialProject = null })
       <VisualModalPanel onClick={(event) => event.stopPropagation()}>
         <div className="modal-header">
           <div>
-            <span>{selectedVisualAsset.projectTitle || '공유 프로젝트'}</span>
+            <span>{selectedVisualAsset.projectTitle || '공유작업공간 프로젝트'}</span>
             <h3>{selectedVisualAsset.title || '시각화 자료'}</h3>
           </div>
           <button type="button" onClick={() => setSelectedVisualAsset(null)} aria-label="닫기">×</button>
@@ -1370,9 +1482,59 @@ function ShareC({ onRestoreTrigger, username = 'Guest', initialProject = null })
     </VisualModalOverlay>
   );
 
+  const renderVisualPicker = () => (
+    <ProjectPickerOverlay onClick={() => setIsVisualPickerOpen(false)}>
+      <ProjectPickerPanel onClick={(event) => event.stopPropagation()}>
+        <div className="picker-header">
+          <div className="picker-title">
+            <h3>시각화 보관함</h3>
+            <span className="picker-desc">
+              {activeProject?.title || '프로젝트'}에 저장된 표, 이미지 추출 결과, 그래프 중 공유할 자료를 선택하세요.
+            </span>
+          </div>
+          <button type="button" className="close-btn" onClick={() => setIsVisualPickerOpen(false)} aria-label="닫기">
+            ×
+          </button>
+        </div>
+        <ProjectPickerGrid>
+          {activeProjectVisuals.length === 0 ? (
+            <div className="empty-state">아직 저장된 시각화 자료가 없습니다.</div>
+          ) : activeProjectVisuals.map((visual) => {
+            const loaded = importedVisualIdSet.has(normalizeVisualId(visual.id));
+            return (
+              <VisualPickerCard
+                key={visual.id}
+                type="button"
+                $loaded={loaded}
+                onClick={() => handleImportVisualAsset(visual)}
+              >
+                <div className="visual-thumb">
+                  {renderVisualPreview({
+                    ...visual,
+                    type: 'visual',
+                    kind: visual.kind || visual.type || 'chart',
+                  })}
+                </div>
+                <div className="visual-info">
+                  <div className="tag-row">
+                    <span className="tag">{visual.kind || visual.type || '시각화'}</span>
+                    {loaded && <span className="loaded-label">불러옴</span>}
+                  </div>
+                  <strong>{visual.title || '시각화 자료'}</strong>
+                  <span>{visual.desc || visual.text || '분석 페이지에서 저장된 시각화 자료입니다.'}</span>
+                </div>
+              </VisualPickerCard>
+            );
+          })}
+        </ProjectPickerGrid>
+      </ProjectPickerPanel>
+    </ProjectPickerOverlay>
+  );
+
   // 페이지 전체 레이아웃: 모바일에서는 RightCoopPanel이 order:1로 위에, MainTimelineContent가 order:2로 아래에 표시됩니다.
   return (
     <Container>
+      {isVisualPickerOpen && renderVisualPicker()}
       {isMobile ? (
         <>
           {renderHeader()}

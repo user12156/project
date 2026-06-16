@@ -1,6 +1,6 @@
 """Chart defaults, options, and templates."""
 
-ALLOWED_CHART_TYPES = {"line", "bar", "pie"}
+ALLOWED_CHART_TYPES = {"line", "bar"}
 
 NULL_VALUES = {
     "",

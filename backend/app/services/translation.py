@@ -11,11 +11,12 @@ from app.core.config import settings
 
 ENGLISH_WORD_RE = re.compile(r"\b[A-Za-z][A-Za-z\-]{2,}\b")
 KOREAN_RE = re.compile(r"[가-힣]")
-MAX_ARGOS_TRANSLATION_CHARS = int(os.getenv("MAX_ARGOS_TRANSLATION_CHARS", "1200"))
-MAX_ARGOS_TRANSLATED_LINES = int(os.getenv("MAX_ARGOS_TRANSLATED_LINES", "4"))
-MAX_ARGOS_LINE_CHARS = int(os.getenv("MAX_ARGOS_LINE_CHARS", "450"))
+MAX_ARGOS_TRANSLATION_CHARS = int(os.getenv("MAX_ARGOS_TRANSLATION_CHARS", "12000"))
+MAX_ARGOS_TRANSLATED_LINES = int(os.getenv("MAX_ARGOS_TRANSLATED_LINES", "30"))
+MAX_ARGOS_LINE_CHARS = int(os.getenv("MAX_ARGOS_LINE_CHARS", "1200"))
 
 logging.getLogger("argostranslate").setLevel(logging.WARNING)
+logging.getLogger("argostranslate.utils").setLevel(logging.WARNING)
 
 
 def _english_heavy(text: str) -> bool:
@@ -35,10 +36,8 @@ def _should_translate_line(line: str) -> bool:
         return False
     if "HWPHYPERLINK" in stripped or re.search(r"https?://|www\.", stripped, re.IGNORECASE):
         return False
-    normalized = re.sub(r"^[-*]\s+", "", stripped)
+    normalized = re.sub(r"^[-*•]\s+", "", stripped)
     normalized = re.sub(r"^\[[^\]]+\]\s*", "", normalized)
-    if re.fullmatch(r"[\[\]가-힣A-Za-z0-9 .,:()/%·_>\-]+", normalized) is None:
-        return False
     return _english_heavy(normalized)
 
 
@@ -107,6 +106,21 @@ def _dictionary_translate(text: str) -> str:
         (r"\bThe system should provide\b", "시스템은 제공해야 합니다"),
         (r"\bKorean summaries\b", "한국어 요약"),
         (r"\bfor Korean users\b", "한국어 사용자에게"),
+        (r"\bDeep Learning Models?\b", "딥러닝 모델"),
+        (r"\bDL models?\b", "딥러닝 모델"),
+        (r"\bConvolutional Neural Networks?\b", "합성곱 신경망"),
+        (r"\bCNN\b", "합성곱 신경망"),
+        (r"\bMachine Learning\b", "머신러닝"),
+        (r"\bLogistic Regression\b", "로지스틱 회귀"),
+        (r"\btime-series\b", "시계열"),
+        (r"\btemporal sequences?\b", "시간적 순서 데이터"),
+        (r"\bagricultural weather data\b", "농업 기상 데이터"),
+        (r"\bspatial features?\b", "공간적 특징"),
+        (r"\bModel Category\b", "모델 분류"),
+        (r"\bAccuracy\b", "정확도"),
+        (r"\bSensitivity\b", "민감도"),
+        (r"\bSpecificity\b", "특이도"),
+        (r"특이성", "특이도"),
     ]
     for pattern, replacement in replacements:
         translated = re.sub(pattern, replacement, translated, flags=re.IGNORECASE)
@@ -129,9 +143,51 @@ def _cleanup_translated_text(text: str) -> str:
         (r"한국 사용자를 위한 한국어", "한국어 사용자에게"),
         (r"한국어 사용자에게 요약를", "한국어 사용자에게 요약을"),
         (r"한국어 사용자를 위한 요약를", "한국어 사용자를 위한 요약을"),
+        (r"한국어 사용자에게를 제공해야 합니다", "한국어 사용자에게 한국어 요약을 제공해야 합니다"),
+        (r"한국어 사용자에게를 제공해야 한다", "한국어 사용자에게 한국어 요약을 제공해야 한다"),
         (r"요약를", "요약을"),
         (r"영어로 작성 될 때", "영어로 작성되어 있을 때"),
         (r"종종 영어로 작성 될 때 영어로 응답합니다", "영어 문서가 업로드되면 종종 영어로 응답합니다"),
+        (r"\bDeep Learning Models?\b", "딥러닝 모델"),
+        (r"\bDL models?\b", "딥러닝 모델"),
+        (r"\bConvolutional Neural Networks?\b", "합성곱 신경망"),
+        (r"\bCNN\b", "합성곱 신경망"),
+        (r"\bMachine Learning\b", "머신러닝"),
+        (r"\bLogistic Regression\b", "로지스틱 회귀"),
+        (r"\btime-series\b", "시계열"),
+        (r"\btemporal sequences?\b", "시간적 순서 데이터"),
+        (r"\bagricultural weather data\b", "농업 기상 데이터"),
+        (r"\bspatial features?\b", "공간적 특징"),
+        (r"\bModel Category\b", "모델 분류"),
+        (r"\bModel\b", "모델"),
+        (r"\bCategory\b", "분류"),
+        (r"\bAccuracy\b", "정확도"),
+        (r"\bSensitivity\b", "민감도"),
+        (r"\bSpecificity\b", "특이도"),
+        (r"특이성", "특이도"),
+        (r"\bDL 모델\b", "딥러닝 모델"),
+        (r"DL\s*모델", "딥러닝 모델"),
+        (r"\btemporal sequences?\b", "시간적 순서 데이터"),
+        (r"temporal sequences?", "시간적 순서 데이터"),
+        (r"\btime series\b", "시계열"),
+        (r"시간\s*시리즈", "시계열"),
+        (r"처리하고\s*시계열", "처리하고 시계열"),
+        (r"복잡한\s*공간\s*기능", "복잡한 공간적 특징"),
+        (r"공간\s*기능", "공간적 특징"),
+        (r"농업\s*날씨\s*데이터", "농업 기상 데이터"),
+        (r"모형\s*종류", "모델 분류"),
+        (r"(?<!민)감도", "민감도"),
+        (r"민민감도", "민감도"),
+        (r"기계\s*학습", "머신러닝"),
+        (r"병참술\s*회귀", "로지스틱 회귀"),
+        (r"합성곱 신경망\s*\(합성곱 신경망\)", "합성곱 신경망"),
+        (r"1D\s*합성곱 신경망\s*아키텍처가\s*고용되었습니다", "1D 합성곱 신경망 구조가 사용되었습니다"),
+        (r"아키텍처가\s*고용되었습니다", "구조가 사용되었습니다"),
+        (
+            r"딥러닝 모델\s+딥러닝 모델은 시간적 순서 데이터를 처리하고 시계열 농업 기상 데이터에서 복잡한 공간적 특징을 추출 할 수있는 능력을 선택했습니다",
+            "딥러닝 모델은 시간적 순서 데이터를 처리하고 시계열 농업 기상 데이터에서 복잡한 공간적 특징을 추출할 수 있어 선택되었습니다",
+        ),
+        (r"추출\s*할\s*수있는", "추출할 수 있는"),
     ]
     for pattern, replacement in replacements:
         cleaned = re.sub(pattern, replacement, cleaned, flags=re.IGNORECASE)
@@ -173,9 +229,23 @@ def ensure_korean_analysis_text(text: str) -> str:
     return "\n".join(output)
 
 
+def force_korean_analysis_text(text: str) -> str:
+    """Final safety pass for mixed Korean/English analysis answers."""
+
+    translated = ensure_korean_analysis_text(text)
+
+    lines = []
+    for line in str(translated or "").splitlines():
+        if _should_translate_line(line) or _english_heavy(line):
+            lines.append(_translate_en_to_ko(line[:MAX_ARGOS_LINE_CHARS], allow_argos=True))
+        else:
+            lines.append(line)
+    return "\n".join(lines)
+
+
 def _translate_value(value):
     if isinstance(value, str):
-        return ensure_korean_analysis_text(value)
+        return force_korean_analysis_text(value)
     if isinstance(value, list):
         return [_translate_value(item) for item in value]
     if isinstance(value, dict):
