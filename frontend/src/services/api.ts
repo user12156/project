@@ -37,7 +37,7 @@ const getApiBaseUrl = () => {
     console.warn('VITE_API_BASE_URL is not set. Vercel production builds should point this to the EC2 backend URL.');
   }
 
-  return import.meta.env.DEV ? 'http://localhost:8000' : '';
+  return import.meta.env.DEV ? 'http://127.0.0.1:9000' : '';
 };
 
 const API_BASE_URL = getApiBaseUrl();

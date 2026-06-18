@@ -2,10 +2,12 @@
 """HWP and HWPX extraction helpers."""
 
 import io
+import re
 import struct
 import subprocess
 import tempfile
 import zipfile
+from html import unescape
 from pathlib import Path
 from xml.etree import ElementTree
 
@@ -14,8 +16,84 @@ from app.services.analysis.answer_builder import _clean_text
 from app.services.extractors.image_extractor import IMAGE_EXTENSIONS
 
 
+def _decode_xml_bytes(raw: bytes) -> str:
+    for encoding in ("utf-8-sig", "utf-16", "utf-16le", "utf-16be", "cp949"):
+        try:
+            return raw.decode(encoding)
+        except (UnicodeDecodeError, LookupError):
+            continue
+    return raw.decode("utf-8", errors="ignore")
+
+
+def _extract_xml_text(raw: bytes) -> str:
+    try:
+        root = ElementTree.fromstring(raw)
+        return " ".join(text.strip() for text in root.itertext() if text and text.strip())
+    except ElementTree.ParseError:
+        pass
+
+    # 일부 공공기관 HWPX는 본문 XML에 잘못 이스케이프된 문자나 제어 문자가
+    # 포함되어 표준 XML 파서가 전체 section을 버립니다. 텍스트 노드는 별도로
+    # 복구해 문서 전체가 빈 본문으로 처리되지 않게 합니다.
+    decoded = _decode_xml_bytes(raw)
+    decoded = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", " ", decoded)
+    text_nodes = re.findall(
+        r"<(?:[A-Za-z_][\w.-]*:)?(?:t|text)\b[^>]*>(.*?)</(?:[A-Za-z_][\w.-]*:)?(?:t|text)>",
+        decoded,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    if not text_nodes:
+        return ""
+
+    recovered = []
+    for node in text_nodes:
+        node = re.sub(r"<!\[CDATA\[(.*?)\]\]>", r"\1", node, flags=re.DOTALL)
+        node = re.sub(r"<[^>]+>", " ", node)
+        cleaned = unescape(node).strip()
+        if cleaned:
+            recovered.append(cleaned)
+    return " ".join(recovered)
+
+
+def _is_hwpx_content_xml(name: str) -> bool:
+    normalized = name.replace("\\", "/").lower()
+    return normalized.endswith(".xml") and (
+        "contents/" in normalized
+        or "bodytext/" in normalized
+        or "/section" in normalized
+        or normalized.startswith("section")
+    )
+
+
+def _hwpx_encryption_algorithm(data: bytes) -> str:
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+            manifest = archive.read("META-INF/manifest.xml")
+    except (KeyError, zipfile.BadZipFile):
+        return ""
+
+    try:
+        root = ElementTree.fromstring(manifest)
+    except ElementTree.ParseError:
+        return ""
+
+    for node in root.iter():
+        if node.tag.rsplit("}", 1)[-1] != "algorithm":
+            continue
+        algorithm = (
+            node.attrib.get("algorithm-name")
+            or node.attrib.get("{urn:oasis:names:tc:opendocument:xmlns:manifest:1.0}algorithm-name")
+            or ""
+        )
+        if algorithm:
+            return algorithm
+
+    return "encrypted" if b"encryption-data" in manifest else ""
+
+
 def _parse_hwpx_bytes(data: bytes) -> tuple[str, list[dict]]:
-    texts = []
+    content_texts = []
+    fallback_texts = []
     images = []
     try:
         with zipfile.ZipFile(io.BytesIO(data)) as archive:
@@ -24,10 +102,14 @@ def _parse_hwpx_bytes(data: bytes) -> tuple[str, list[dict]]:
                 if lower_name.endswith(".xml"):
                     try:
                         raw = archive.read(name)
-                        root = ElementTree.fromstring(raw)
-                    except Exception:
+                    except KeyError:
                         continue
-                    texts.append(" ".join(text for text in root.itertext() if text and text.strip()))
+                    extracted = _extract_xml_text(raw)
+                    if extracted:
+                        if _is_hwpx_content_xml(name):
+                            content_texts.append(extracted)
+                        else:
+                            fallback_texts.append(extracted)
 
                 if any(lower_name.endswith(ext) for ext in IMAGE_EXTENSIONS) or lower_name.endswith(".svg"):
                     try:
@@ -37,6 +119,7 @@ def _parse_hwpx_bytes(data: bytes) -> tuple[str, list[dict]]:
     except zipfile.BadZipFile:
         return "", []
 
+    texts = content_texts or fallback_texts
     combined = "\n".join(_clean_text(text) for text in texts if text)
     return combined, images
 
@@ -98,6 +181,17 @@ def _parse_hwp_bytes(data: bytes) -> tuple[str, list[dict]]:
 def parse_document(file_bytes: bytes, filename: str = "document") -> dict:
     ext = Path(filename).suffix.lower()
     if ext == ".hwpx":
+        encryption_algorithm = _hwpx_encryption_algorithm(file_bytes)
+        if encryption_algorithm:
+            return {
+                "filename": filename,
+                "format": "hwpx",
+                "text": "",
+                "images": [],
+                "encrypted": True,
+                "encryption_algorithm": encryption_algorithm,
+            }
+
         jar_path = settings.hwpx_jar
         if jar_path:
             try:

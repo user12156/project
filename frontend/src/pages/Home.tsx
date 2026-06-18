@@ -274,6 +274,19 @@ function Home() {
     setAuthError("");
   };
 
+  const startNewAnalysis = () => {
+    sessionStorage.setItem("papermate.skipActiveAnalysisRestore", "1");
+    const activeAnalysisKey = getActiveAnalysisSessionKey();
+    localStorage.removeItem(activeAnalysisKey);
+    window.dispatchEvent(new CustomEvent("papermate-storage-updated", {
+      detail: { key: activeAnalysisKey },
+    }));
+    setRestoredData(null);
+    setNewAnalysisSignal((prev) => prev + 1);
+    setAnalysisSessionKey(`analysis-new-${Date.now()}-${Math.random()}`);
+    navigateToView(VIEW.ANALYSIS, { clearRestoredData: true });
+  };
+
   const handleMenuRouting = (menuName: string) => {
     const protectedMenus = [
       VIEW.SHARE,
@@ -661,7 +674,7 @@ function Home() {
             <GridContainer>
               {/* 첫 번째 카드: 문서 분석 (📑 이모지) */}
               <FeatureCard
-                onClick={() => handleMenuRouting(VIEW.ANALYSIS)}
+                onClick={startNewAnalysis}
                 $bgGradient="linear-gradient(135deg, #e0f2f1 0%, #b2dfdb 100%)"
               >
                 <div className="floating-emoji">📑</div>
@@ -681,7 +694,7 @@ function Home() {
 
               {/* 두 번째 카드: 데이터 시각화 (📊 이모지) */}
               <FeatureCard
-                onClick={() => handleMenuRouting(VIEW.ANALYSIS)}
+                onClick={startNewAnalysis}
                 $bgGradient="linear-gradient(135deg, #fff9c4 0%, #ffecb3 100%)"
               >
                 <div className="floating-emoji">📊</div>

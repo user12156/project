@@ -17,8 +17,11 @@ from .fallback_analysis import (
 from .analysis.grounding import validate_grounding
 from .analysis.compare_builder import build_document_compare_answer
 from .analysis.query_analyzer import is_compare_request
+from .chart.chart_asset import create_graph_visual
 from .llm.service import analyze_with_llm
+from .table.table_chart_builder import try_build_chart_from_tables
 from .translation import translate_analysis_payload
+from .visual_buttons.table_visual import create_table_visual
 from .web_search import search_results_to_docs, wants_web_search, web_search
 
 
@@ -118,6 +121,60 @@ def _validate_visual_config(config: dict, extracted_docs: list[dict]) -> bool:
     evidence = _compact_number("\n".join(doc.get("text", "") for doc in extracted_docs))
     numbers = [number for number in _visual_numbers(config) if re.search(r"\d", number)]
     return bool(numbers) and all(_compact_number(number) in evidence for number in numbers)
+
+
+def _local_visual_config(question: str, extracted_docs: list[dict]) -> dict | None:
+    if not _is_visual_request(question):
+        return None
+
+    source_text = "\n\n".join(
+        str(doc.get("text") or "").strip()
+        for doc in extracted_docs
+        if str(doc.get("text") or "").strip()
+    )
+    lowered = str(question or "").lower()
+    wants_table = "표" in question or "table" in lowered
+    wants_chart = any(
+        keyword in lowered or keyword in question
+        for keyword in ("그래프", "차트", "막대", "선그래프", "추이", "graph", "chart", "bar", "line")
+    )
+
+    if wants_chart:
+        chart = try_build_chart_from_tables(question, extracted_docs)
+        if chart and chart.get("type") != "chart_error":
+            return chart
+        return create_graph_visual(extracted_docs, source_text)
+
+    if wants_table:
+        return create_table_visual(extracted_docs, source_text)
+
+    return None
+
+
+def _local_visual_payload(
+    visual_config: dict,
+    fallback_answer: dict,
+    *,
+    selected_provider: str,
+    llm_key_received: bool,
+    llm_key_source: str,
+) -> dict:
+    return {
+        **fallback_answer,
+        "answer": json.dumps(visual_config, ensure_ascii=False),
+        "keywords": fallback_answer.get("keywords", []),
+        "metrics": fallback_answer.get("metrics", []),
+        "topics": fallback_answer.get("topics", []),
+        "relevant_chunks": fallback_answer.get("relevant_chunks", []),
+        "intent": "시각화",
+        "llm_used": False,
+        "llm_key_received": llm_key_received,
+        "llm_key_source": llm_key_source,
+        "provider": selected_provider,
+        "model": None,
+        "llm_error": None,
+        "suggested_questions": [],
+    }
 
 
 def _clean_evidence_text(text: str) -> str:
@@ -324,6 +381,11 @@ def run_analysis_pipeline(
 
     uploaded_filenames = uploaded_filenames or []
     fallback_answer = build_analysis_answer(question, extracted_docs)
+    extraction_errors = [
+        str(doc.get("extraction_error") or "").strip()
+        for doc in extracted_docs
+        if str(doc.get("extraction_error") or "").strip()
+    ]
     local_suggested_questions = _local_suggested_questions(fallback_answer)
     has_grounded_docs = any(str(doc.get("text", "")).strip() for doc in extracted_docs)
     should_compare_documents = is_compare_request(question) or len(
@@ -345,6 +407,7 @@ def run_analysis_pipeline(
                 fallback_answer,
                 bool(uploaded_filenames),
                 uploaded_filenames,
+                extraction_errors,
             ),
             "llm_used": False,
             "provider": None,
@@ -354,6 +417,16 @@ def run_analysis_pipeline(
             "llm_key_source": None,
             "suggested_questions": [],
         })
+
+    local_visual_config = _local_visual_config(question, extracted_docs)
+    if local_visual_config:
+        return _local_visual_payload(
+            local_visual_config,
+            fallback_answer,
+            selected_provider=selected_provider,
+            llm_key_received=llm_key_received,
+            llm_key_source=llm_key_source,
+        )
 
     if should_compare_documents:
         compare_payload = build_document_compare_answer(question, extracted_docs)

@@ -129,6 +129,19 @@ def extract_file_document(filename: str, content: bytes) -> dict:
 
     if extension == ".hwpx":
         parsed = parse_document(content, filename)
+        if parsed.get("encrypted"):
+            algorithm = str(parsed.get("encryption_algorithm") or "암호화").rsplit("/", 1)[-1]
+            return _document_from_units(
+                filename,
+                "HWPX/OWPML",
+                [],
+                extraction_error=(
+                    f"{filename} 파일은 암호화된 HWPX 문서입니다"
+                    f"({algorithm}). 비밀번호가 없는 서버에서는 본문을 해독할 수 없습니다. "
+                    "한글에서 문서를 연 뒤 암호/배포용 문서 설정을 해제하여 새 HWPX로 저장하거나, "
+                    "텍스트 포함 PDF로 내보낸 뒤 다시 업로드해주세요."
+                ),
+            )
         text = preprocess_korean_text(parsed.get("text", ""), fix_spacing=False)
         if not text.strip():
             text = _extract_hwpx_preview_fallback(content)

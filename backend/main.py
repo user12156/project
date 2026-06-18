@@ -63,6 +63,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Process-Time-MS", "X-Request-ID", "Server-Timing"],
 )
 
 _register_routers(app)
@@ -106,6 +107,7 @@ async def add_request_context(request: Request, call_next):
         )
     response.headers["X-Request-ID"] = request_id
     response.headers["X-Process-Time-MS"] = f"{elapsed_ms:.2f}"
+    response.headers["Server-Timing"] = f"app;dur={elapsed_ms:.2f}"
     return response
 
 

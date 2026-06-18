@@ -54,6 +54,16 @@ const createInviteCode = () => {
 
 const formatDate = () => new Date().toLocaleDateString('ko-KR').replace(/. /g, '.').slice(0, -1);
 const nowIso = () => new Date().toISOString();
+const nowMs = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+const formatElapsedTime = (value: unknown) => {
+  const milliseconds = Number(value);
+  if (!Number.isFinite(milliseconds) || milliseconds < 0) return '';
+  if (milliseconds < 1000) return `${Math.round(milliseconds)}ms`;
+  if (milliseconds < 60000) return `${(milliseconds / 1000).toFixed(milliseconds < 10000 ? 1 : 0)}초`;
+  const minutes = Math.floor(milliseconds / 60000);
+  const seconds = Math.round((milliseconds % 60000) / 1000);
+  return `${minutes}분 ${seconds}초`;
+};
 const formatDateTime = (value) => {
   if (!value) return '';
   const text = String(value).trim();
@@ -225,6 +235,8 @@ const toStoredThread = (messages) =>
       savedAt: message.savedAt,
       suggestedQuestions: message.suggestedQuestions,
       suggestedDepth: message.suggestedDepth,
+      elapsedMs: message.elapsedMs,
+      serverProcessMs: message.serverProcessMs,
     }));
 
 const hasVisualPayload = (message: any = {}) => {
@@ -1265,6 +1277,7 @@ function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, c
     }
 
     setIsAnalyzing(true);
+    const requestStartedAt = nowMs();
 
     try {
       const analysisHistory = hasNewUpload ? '' : getLatestAnalysisText(messages);
@@ -1274,6 +1287,9 @@ function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, c
         selectedSourceName: compareMode ? '' : selectedUploadFile?.name || selectedFileAfterUpload?.name || '',
         compareMode,
       }, analysisHistory);
+      const elapsedMs = nowMs() - requestStartedAt;
+      const parsedServerProcessMs = Number(response.headers?.['x-process-time-ms']);
+      const serverProcessMs = Number.isFinite(parsedServerProcessMs) ? parsedServerProcessMs : undefined;
       const providerLabelMap: Record<string, string> = {
         openai: 'OpenAI',
         gemini: 'Gemini',
@@ -1319,6 +1335,8 @@ function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, c
           createdAt: nowIso(),
           suggestedDepth,
           suggestedQuestions,
+          elapsedMs,
+          serverProcessMs,
         };
         messagesWithAnswer.push(newVisual);
         
@@ -1329,7 +1347,16 @@ function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, c
           return visualId && !prev.includes(visualId) ? [visualId, ...prev] : prev;
         });
       } else {
-        messagesWithAnswer.push({ id: `ai-${Date.now()}`, role: 'ai', text: `${answer}${providerNote}`, createdAt: nowIso(), suggestedDepth, suggestedQuestions });
+        messagesWithAnswer.push({
+          id: `ai-${Date.now()}`,
+          role: 'ai',
+          text: `${answer}${providerNote}`,
+          createdAt: nowIso(),
+          suggestedDepth,
+          suggestedQuestions,
+          elapsedMs,
+          serverProcessMs,
+        });
       }
 
       setMessages(messagesWithAnswer);
@@ -1364,6 +1391,7 @@ function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, c
             .filter(Boolean)
             .join('\n\n'),
           createdAt: nowIso(),
+          elapsedMs: nowMs() - requestStartedAt,
         },
       ];
       setMessages(messagesWithAnswer);
@@ -1884,6 +1912,14 @@ function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, c
                           onProgress={scrollToLatestMessage}
                         />
                       </div>
+                      {formatElapsedTime(message.elapsedMs) && (
+                        <div className="analysis-timing">
+                          분석 소요시간 {formatElapsedTime(message.elapsedMs)}
+                          {formatElapsedTime(message.serverProcessMs) && (
+                            <span>서버 처리 {formatElapsedTime(message.serverProcessMs)}</span>
+                          )}
+                        </div>
+                      )}
                       {message.suggestedQuestions && message.suggestedQuestions.length > 0 && (
                         <div className="suggested-questions">
                           {message.suggestedQuestions.map((q, idx) => (
@@ -1905,6 +1941,14 @@ function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, c
                   <AiRow>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%', maxWidth: '85%', minWidth: '450px' }}>
                       {renderVisualArtifact(message)}
+                      {formatElapsedTime(message.elapsedMs) && (
+                        <div className="analysis-timing">
+                          분석 소요시간 {formatElapsedTime(message.elapsedMs)}
+                          {formatElapsedTime(message.serverProcessMs) && (
+                            <span>서버 처리 {formatElapsedTime(message.serverProcessMs)}</span>
+                          )}
+                        </div>
+                      )}
                       {message.suggestedQuestions && message.suggestedQuestions.length > 0 && (
                         <div className="suggested-questions">
                           {message.suggestedQuestions.map((q: string, idx: number) => (

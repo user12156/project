@@ -683,6 +683,22 @@ export const AiRow = styled.div`
     margin-left: 4px;
   }
 
+  .analysis-timing {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: 6px;
+    color: #64748b;
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .analysis-timing span {
+    padding-left: 8px;
+    border-left: 1px solid #cbd5e1;
+    color: #94a3b8;
+  }
+
   .suggested-chip {
     background-color: white;
     border: 1px solid #0ea5a4;

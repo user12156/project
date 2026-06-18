@@ -213,9 +213,17 @@ def build_empty_context_answer(
     fallback_answer: dict,
     has_uploaded_files: bool,
     filenames: list[str],
+    extraction_errors: list[str] | None = None,
 ) -> str:
     if has_uploaded_files:
         file_names = ", ".join(filenames)
+        errors = [str(error).strip() for error in (extraction_errors or []) if str(error).strip()]
+        if errors:
+            return (
+                f"업로드하신 파일({file_names})의 본문을 읽지 못했습니다.\n\n"
+                "[문서 확인 결과]\n"
+                + "\n".join(f"- {error}" for error in errors)
+            )
         return (
             f"업로드하신 파일({file_names})에서 텍스트를 추출할 수 없습니다.\n\n"
             "[확인 요청]\n"
