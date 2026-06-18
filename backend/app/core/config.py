@@ -207,7 +207,7 @@ def create_settings() -> Settings:
         enable_bert_grounding=_env_bool("ENABLE_BERT_GROUNDING", False),
         bert_grounding_model=os.getenv(
             "BERT_GROUNDING_MODEL",
-            "jhgan/ko-sroberta-multitask",
+            "paraphrase-multilingual-MiniLM-L12-v2",
         ).strip(),
         bert_grounding_threshold=_env_float("BERT_GROUNDING_THRESHOLD", 0.62),
         bert_grounding_instruction=os.getenv(

@@ -178,7 +178,7 @@ def extract_topics(text: str, limit: int | None = None) -> list[dict]:
         return []
 
     topic_limit = limit or settings.topic_model_limit
-    units = _split_units(text)
+    units = _split_units(text[:10000])
     if not units:
         return []
 

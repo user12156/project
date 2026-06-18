@@ -16,7 +16,7 @@ from app.services.analysis.query_analyzer import (
     _tokenize_terms,
 )
 from app.services.analysis.query_relevance import query_relevance_score
-from app.services.analysis.scoring_config import CHUNK_RANK_WEIGHTS
+from app.services.analysis.scoring_config import CHUNK_RANK_WEIGHTS, QUERY_RELEVANCE_WEIGHTS
 from app.services.embeddings.reranker import semantic_sentence_scores
 
 
@@ -109,15 +109,11 @@ def rank_relevant_chunks(question: str, extracted_docs: list[dict], limit: int =
     )
     rank_terms = _query_terms_for_rank(question)
     idf = _idf_weights([item["text"] for item in candidates])
-    semantic_scores = semantic_sentence_scores(
-        question,
-        [item["text"][:700] for item in candidates],
-    ) if question else None
-
-    ranked = []
+    base_ranked = []
     for index, item in enumerate(candidates):
         term_counts = Counter(_tokenize_terms(item["text"]))
         if not term_counts:
+            base_ranked.append({**item, "base_score": 0.0, "original_index": index})
             continue
 
         score = 0.0
@@ -137,18 +133,45 @@ def rank_relevant_chunks(question: str, extracted_docs: list[dict], limit: int =
         )
         score += len(_metric_candidates(item["text"], 2)) * CHUNK_RANK_WEIGHTS.metric
         compact_text = _compact_for_match(item["text"])
-        semantic_score = semantic_scores[index] if semantic_scores else 0.0
         relevance_score, _, _ = query_relevance_score(
             item["text"],
             query_terms,
             rank_terms=rank_terms,
-            semantic_score=semantic_score,
+            semantic_score=0.0,
         )
         score += relevance_score
         if "원본그림" in compact_text or "수식입니다" in item["text"]:
             score += CHUNK_RANK_WEIGHTS.noise_penalty
 
-        ranked.append({**item, "score": round(score, 4), "semantic_score": round(semantic_score, 4)})
+        base_ranked.append({**item, "base_score": score, "original_index": index})
 
-    ranked.sort(key=lambda item: (item["score"], item.get("semantic_score", 0.0)), reverse=True)
-    return ranked[:limit]
+    base_ranked.sort(key=lambda item: item["base_score"], reverse=True)
+    dynamic_top_k = min(15, max(5, int(len(base_ranked) * 0.15)))
+    top_candidates = base_ranked[:dynamic_top_k]
+
+    top_semantic_scores = (
+        semantic_sentence_scores(
+            question,
+            [item["text"][:700] for item in top_candidates],
+        )
+        if question and top_candidates
+        else None
+    )
+
+    for index, item in enumerate(top_candidates):
+        semantic_score = top_semantic_scores[index] if top_semantic_scores else 0.0
+        item["semantic_score"] = round(semantic_score, 4)
+        item["score"] = round(
+            item["base_score"] + semantic_score * QUERY_RELEVANCE_WEIGHTS.semantic,
+            4,
+        )
+
+    top_candidates.sort(
+        key=lambda item: (item["score"], item.get("semantic_score", 0.0)),
+        reverse=True,
+    )
+    for item in top_candidates:
+        item.pop("base_score", None)
+        item.pop("original_index", None)
+
+    return top_candidates[:limit]

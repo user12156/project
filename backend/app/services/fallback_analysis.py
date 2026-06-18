@@ -6,6 +6,8 @@ document_processing.py, while this file builds quick summaries, keywords,
 metrics, and source-grounded fallback responses.
 """
 
+import concurrent.futures
+
 from app.services.analysis.answer_builder import (
     _clean_text,
     _doc_brief,
@@ -139,20 +141,33 @@ def build_analysis_answer(question: str, extracted_docs: list[dict]) -> dict:
             _analysis_payload(summary=summary, intent=intent),
         )
 
-    relevant_chunks = rank_relevant_chunks(question, cleaned_docs, 6)
-    relevant_text = _focused_relevant_text(relevant_chunks, combined_text)
-    summary_points = _extractive_summary(relevant_text, question, 4)
-    terms = _frequent_terms(relevant_text)
-    metrics = _metric_candidates(relevant_text)
-    topics = extract_topics(relevant_text)
-    if relevant_text == combined_text:
-        document_terms = terms
-        document_metrics = metrics
-        document_topics = topics
-    else:
-        document_terms = _frequent_terms(combined_text)
-        document_metrics = _metric_candidates(combined_text)
-        document_topics = extract_topics(combined_text)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+        future_chunks = executor.submit(rank_relevant_chunks, question, cleaned_docs, 6)
+        future_document_terms = executor.submit(_frequent_terms, combined_text)
+        future_document_metrics = executor.submit(_metric_candidates, combined_text)
+        future_document_topics = executor.submit(extract_topics, combined_text)
+
+        relevant_chunks = future_chunks.result()
+        relevant_text = _focused_relevant_text(relevant_chunks, combined_text)
+
+        if relevant_text == combined_text:
+            future_terms = future_document_terms
+            future_metrics = future_document_metrics
+            future_topics = future_document_topics
+        else:
+            future_terms = executor.submit(_frequent_terms, relevant_text)
+            future_metrics = executor.submit(_metric_candidates, relevant_text)
+            future_topics = executor.submit(extract_topics, relevant_text)
+
+        future_summary = executor.submit(_extractive_summary, relevant_text, question, 4)
+
+        terms = future_terms.result()
+        metrics = future_metrics.result()
+        topics = future_topics.result()
+        summary_points = future_summary.result()
+        document_terms = future_document_terms.result()
+        document_metrics = future_document_metrics.result()
+        document_topics = future_document_topics.result()
     summary = " ".join(summary_points) or combined_text[:600]
 
     payload = _analysis_payload(

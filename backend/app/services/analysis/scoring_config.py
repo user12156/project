@@ -16,7 +16,7 @@ class QueryRelevanceWeights:
 class ChunkRankWeights:
     frequent_term: float = 0.15
     frequent_term_cap: float = 3.0
-    metric: float = 1.4
+    metric: float = 15.0
     noise_penalty: float = -8.0
     focused_score_ratio: float = 0.35
 
