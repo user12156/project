@@ -23,9 +23,19 @@ from app.services.visual_buttons.image.extraction import (
 )
 
 
+NO_EXTRACTED_TEXT_MESSAGES = (
+    "HWPX/OWPML 내부에서 추출 가능한 본문 텍스트를 찾지 못했습니다.",
+    "HWP 본문 텍스트를 찾지 못했습니다.",
+)
+
+
 def _parsed_text_or_message(parsed: dict, empty_message: str) -> str:
     text = preprocess_korean_text(parsed.get("text", ""), fix_spacing=False)
     return text or empty_message
+
+
+def _is_empty_extraction_message(text: str) -> bool:
+    return any(message in str(text or "") for message in NO_EXTRACTED_TEXT_MESSAGES)
 
 
 def _is_hwp_extraction_failure(text: str) -> bool:
@@ -76,6 +86,7 @@ def _document_from_units(
     file_format: str,
     units: list[dict],
     visual_assets: list[dict] | None = None,
+    extraction_error: str | None = None,
 ) -> dict:
     visual_assets = visual_assets or []
     if visual_assets:
@@ -90,7 +101,20 @@ def _document_from_units(
         "text": text,
         "source_units": finalized_units,
         "visual_assets": visual_assets,
+        "extraction_error": extraction_error,
     }
+
+
+def _extract_hwpx_preview_fallback(content: bytes) -> str:
+    try:
+        from app.services.document_preview import _extract_hwpx_preview_text
+    except Exception:
+        return ""
+
+    try:
+        return preprocess_korean_text(_extract_hwpx_preview_text(content), fix_spacing=False)
+    except Exception:
+        return ""
 
 
 def extract_file_document(filename: str, content: bytes) -> dict:
@@ -105,15 +129,18 @@ def extract_file_document(filename: str, content: bytes) -> dict:
 
     if extension == ".hwpx":
         parsed = parse_document(content, filename)
-        text = _parsed_text_or_message(
-            parsed,
-            "HWPX/OWPML 내부에서 추출 가능한 본문 텍스트를 찾지 못했습니다.",
-        )
+        text = preprocess_korean_text(parsed.get("text", ""), fix_spacing=False)
+        if not text.strip():
+            text = _extract_hwpx_preview_fallback(content)
+        extraction_error = None
+        if not text.strip():
+            extraction_error = "HWPX/OWPML 내부에서 추출 가능한 본문 텍스트를 찾지 못했습니다."
         return _document_from_units(
             filename,
             "HWPX/OWPML",
-            [{"section_index": 1, "text": text}],
+            [{"section_index": 1, "text": text}] if text.strip() else [],
             visual_assets=extract_zipped_visual_assets(content, filename),
+            extraction_error=extraction_error,
         )
 
     if extension == ".docx":
@@ -144,7 +171,13 @@ def extract_file_document(filename: str, content: bytes) -> dict:
         parsed_text = _parsed_text_or_message(parsed, "")
         if parsed_text:
             text = parsed_text
-        return _document_from_units(filename, "HWP", [{"section_index": 1, "text": text}])
+        extraction_error = text if _is_hwp_extraction_failure(text) or _is_empty_extraction_message(text) else None
+        return _document_from_units(
+            filename,
+            "HWP",
+            [{"section_index": 1, "text": text}] if text and not extraction_error else [],
+            extraction_error=extraction_error,
+        )
 
     return _document_from_units(filename, "UNKNOWN", [{"section_index": 1, "text": "지원하지 않는 파일 형식입니다."}])
 

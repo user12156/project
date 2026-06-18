@@ -466,6 +466,45 @@ export const AiRow = styled.div`
   .markdown-body {
     font-family: inherit;
 
+    .line-reveal {
+      position: relative;
+    }
+
+    .line-reveal.active {
+      animation: reveal-soften 0.18s ease-out;
+    }
+
+    .line-reveal-caret {
+      display: inline-block;
+      width: 7px;
+      height: 1.15em;
+      margin-left: 3px;
+      border-radius: 999px;
+      background: #0ea5a4;
+      vertical-align: -0.18em;
+      animation: reveal-caret 0.9s ease-in-out infinite;
+    }
+
+    @keyframes reveal-soften {
+      from {
+        opacity: 0.76;
+        transform: translateY(2px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes reveal-caret {
+      0%, 100% {
+        opacity: 0.15;
+      }
+      50% {
+        opacity: 1;
+      }
+    }
+
     /* 단락 간격 설정 */
     p { 
       margin: 0 0 14px 0; 

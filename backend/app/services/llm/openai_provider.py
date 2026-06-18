@@ -33,13 +33,27 @@ def analyze_with_openai(
     except ModuleNotFoundError:
         return llm_error("openai 패키지가 설치되어 있지 않습니다.", "openai")
 
+    bad_request_error = getattr(openai, "BadRequestError", None)
+
     model = settings.openai_model
     client = make_openai_client(api_key, OPENAI_ANALYSIS_TIMEOUT_SECONDS)
     system_prompt, user_prompt = build_prompts(question, extracted_docs, analysis_text, relevant_chunks, web_docs=web_docs)
 
     question_lower = (question or "").strip().lower()
-    is_general_summary = not question_lower or any(
-        keyword in question_lower for keyword in ("요약", "분석", "정리", "핵심")
+    broad_summary_patterns = (
+        "요약",
+        "요약해줘",
+        "정리",
+        "정리해줘",
+        "분석",
+        "분석해줘",
+        "핵심 요약",
+        "전체 요약",
+    )
+    is_general_summary = (
+        not question_lower
+        or question_lower in broad_summary_patterns
+        or any(question_lower.endswith(pattern) and len(question_lower) <= 18 for pattern in broad_summary_patterns)
     )
     visual_request = is_visual_request(question)
 
@@ -96,11 +110,15 @@ def analyze_with_openai(
                 )
             else:
                 user_prompt = (
+                    "[User Request]\n"
+                    f"{question or '문서의 전반적인 내용을 꼼꼼하게 분석해줘.'}\n\n"
                     "[Uploaded Document Context - Extracted Facts]\n"
                     f"{extracted_context}\n\n"
                     f"{web_block}"
                     f"{history_block}"
-                    "Write a thorough Korean analysis based only on the extracted document facts above and the explicit web context if provided. "
+                    "Answer the current user request directly. Do not repeat a previous answer unless the current request asks for the same thing. "
+                    "Base factual claims only on the extracted document facts above and the explicit web context if provided. "
+                    "Use previous conversation history only to understand continuity, never as a factual source or as a template to copy. "
                     "The source facts may include English, but the final user-facing answer must be natural Korean. "
                     "Preserve concrete facts, numbers, names, methods, and conclusions."
                 )
@@ -111,6 +129,13 @@ def analyze_with_openai(
             request_kwargs["response_format"] = {"type": "json_object"}
 
         user_content = chat_user_content(user_prompt, extracted_docs)
+        multimodal_inputs = user_content[1:] if isinstance(user_content, list) else []
+        logger.info(
+            "OpenAI request size: system_prompt=%s, user_prompt=%s, images=%s",
+            len(system_prompt or ""),
+            len(str(user_prompt or "")),
+            len(multimodal_inputs or []),
+        )
         response = client.chat.completions.create(
             model=model,
             messages=[
@@ -120,11 +145,25 @@ def analyze_with_openai(
             temperature=0.2,
             **request_kwargs,
         )
-        answer = response.choices[0].message.content.strip()
+        content = response.choices[0].message.content
+        if content is None:
+            logger.warning(
+                "OpenAI response content is None. finish_reason=%s",
+                getattr(response.choices[0], "finish_reason", None),
+            )
+            return llm_error("PaperMate 분석 엔진이 빈 답변을 반환했습니다.", "openai", model)
+
+        answer = content.strip()
     except Exception as exc:
-        if getattr(exc, "status_code", None) == 400:
+        is_bad_request = getattr(exc, "status_code", None) == 400 or (
+            bad_request_error is not None and isinstance(exc, bad_request_error)
+        )
+        if is_bad_request:
             try:
-                logger.info("OpenAI multimodal request failed with 400; retrying text-only analysis.")
+                logger.warning(
+                    "OpenAI multimodal request failed with 400; retrying text-only analysis. error=%s",
+                    getattr(exc, "message", str(exc)),
+                )
                 response = client.chat.completions.create(
                     model=model,
                     messages=[
@@ -134,7 +173,15 @@ def analyze_with_openai(
                     temperature=0.2,
                     **request_kwargs,
                 )
-                answer = response.choices[0].message.content.strip()
+                content = response.choices[0].message.content
+                if content is None:
+                    logger.warning(
+                        "OpenAI retry response content is None. finish_reason=%s",
+                        getattr(response.choices[0], "finish_reason", None),
+                    )
+                    return llm_error("PaperMate 분석 엔진이 빈 답변을 반환했습니다.", "openai", model)
+
+                answer = content.strip()
             except Exception as retry_exc:
                 return llm_error(openai_error_message(retry_exc), "openai", model)
         else:

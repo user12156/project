@@ -1,4 +1,4 @@
-# 초보자 안내: 분석 결과를 표, 그래프, 마인드맵, 이미지 설명 형태로 바꾸는 API 라우터입니다.
+# 초보자 안내: 분석 결과를 표, 그래프, 이미지 설명 형태로 바꾸는 API 라우터입니다.
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
@@ -21,7 +21,7 @@ async def create_visual(
     google_api_key: str = Form(""),
     files: list[UploadFile] = File(default=[]),
 ):
-    """분석 페이지의 표/그래프/이미지/마인드맵 버튼이 호출하는 생성 API입니다."""
+    """분석 페이지의 표/그래프/이미지 버튼이 호출하는 생성 API입니다."""
     creator = VISUAL_CREATORS.get(visual_type)
     if not creator:
         raise HTTPException(status_code=404, detail="지원하지 않는 시각화 유형입니다.")

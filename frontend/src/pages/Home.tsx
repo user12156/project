@@ -27,10 +27,12 @@ import {
   MainDashboard,
   DashboardBrand,
   GridContainer,
+  HwpNotice,
   FeatureCard,
 } from "./styles/Home.styles";
 import {
   clearActiveAnalysisSessionIfMatched,
+  getActiveAnalysisSessionKey,
   getProjectsKey,
   getRecentConversationsKey,
   readJson,
@@ -42,7 +44,7 @@ import papermateLogo from "../assets/papermate-logo.png";
 const VIEW = {
   FAQ: "FAQ",
   MAIN: "main",
-  SHARE: "공유",
+  SHARE: "공유작업공간",
   ANALYSIS: "분석 비교",
   PROJECTS: "내 프로젝트",
   MYPAGE: "마이페이지",
@@ -298,6 +300,11 @@ function Home() {
       navigateToView(VIEW.MYPAGE);
     else if (menuName === "새 채팅") {
       sessionStorage.setItem("papermate.skipActiveAnalysisRestore", "1");
+      const activeAnalysisKey = getActiveAnalysisSessionKey();
+      localStorage.removeItem(activeAnalysisKey);
+      window.dispatchEvent(new CustomEvent("papermate-storage-updated", {
+        detail: { key: activeAnalysisKey },
+      }));
       setNewAnalysisSignal((prev) => prev + 1);
       setAnalysisSessionKey(`analysis-new-${Date.now()}-${Math.random()}`);
       navigateToView(VIEW.ANALYSIS, { clearRestoredData: true });
@@ -690,7 +697,7 @@ function Home() {
                 </div>
               </FeatureCard>
 
-              {/* 세 번째 카드: 작업공간 (🚀 이모지) */}
+              {/* 세 번째 카드: 공유작업공간 (🚀 이모지) */}
               <FeatureCard
                 onClick={() => handleMenuRouting(VIEW.SHARE)}
                 $bgGradient="linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%)"
@@ -702,7 +709,7 @@ function Home() {
                     <FiUsers />
                   </div>
                   <div className="text-box">
-                    <h4>작업공간</h4>
+                    <h4>공유작업공간</h4>
                     <p>
                       초대 코드로 팀원을 초대하고 분석 결과를 함께 검토합니다.
                     </p>
@@ -710,6 +717,11 @@ function Home() {
                 </div>
               </FeatureCard>
             </GridContainer>
+
+            <HwpNotice>
+              <span>HWP는 기본 분석만 지원합니다. 문서 미리보기, 이미지·차트 추출 등 전체 기능은 HWPX로 변환 후 이용해주세요.</span>
+              <span>자세한 사항은 FAQ를 참고해 주셔요.</span>
+            </HwpNotice>
           </MainDashboard>
         )}
 

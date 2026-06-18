@@ -145,14 +145,16 @@ function AuthModal({
   authLoading,
 }: AuthModalProps) {
   const googleButtonRef = useRef<HTMLDivElement>(null);
-  const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
+  const envGoogleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
+  const [runtimeGoogleClientId, setRuntimeGoogleClientId] = useState(envGoogleClientId);
   const [kakaoConfig, setKakaoConfig] = useState({ restApiKey: '', redirectUri: '' });
   const [naverConfig, setNaverConfig] = useState({ clientId: '', redirectUri: '' });
+  const googleClientId = runtimeGoogleClientId || envGoogleClientId;
   const googleAllowedOrigins = getAllowedGoogleOrigins();
   const googleOriginAllowed =
     typeof window === 'undefined' || googleAllowedOrigins.includes(window.location.origin);
   const googleUnavailableMessage = !googleClientId
-    ? 'Google Client ID 필요'
+    ? 'Google Client ID 확인 중'
     : !googleOriginAllowed
       ? 'Google 허용 출처 확인 필요'
       : '';
@@ -162,9 +164,27 @@ function AuthModal({
   useEffect(() => {
     if (modalMode !== 'login' && modalMode !== 'signup') return;
     if (!googleClientId) {
-      onGoogleError('Google Client ID가 프론트 빌드에 설정되지 않았습니다.');
-      return;
+      let cancelled = false;
+
+      authAPI.googleConfig()
+        .then((response) => {
+          if (cancelled) return;
+          const clientId = String(response.data?.client_id || '').trim();
+          if (clientId) {
+            setRuntimeGoogleClientId(clientId);
+            return;
+          }
+          onGoogleError('Google Client ID가 서버 .env에도 설정되지 않았습니다.');
+        })
+        .catch(() => {
+          if (!cancelled) onGoogleError('Google Client ID 설정을 서버에서 불러오지 못했습니다.');
+        });
+
+      return () => {
+        cancelled = true;
+      };
     }
+
     if (!googleOriginAllowed) {
       onGoogleError(`현재 주소(${window.location.origin})가 Google 로그인 허용 출처에 없습니다.`);
       return;

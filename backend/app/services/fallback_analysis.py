@@ -18,6 +18,53 @@ from app.services.analysis.chunk_ranker import rank_relevant_chunks
 from app.services.analysis.query_analyzer import _intent_intro, _intent_label, _question_intent
 from app.services.analysis.scoring_config import CHUNK_RANK_WEIGHTS
 from app.services.analysis.topic_modeling import extract_topics
+from app.services.translation import force_korean_analysis_text
+
+KEYWORD_TRANSLATIONS = {
+    "accuracy": "정확도",
+    "cnn": "합성곱 신경망",
+    "convolutional neural network": "합성곱 신경망",
+    "deep learning model": "딥러닝 모델",
+    "deep learning models": "딥러닝 모델",
+    "logistic regression": "로지스틱 회귀",
+    "machine learning": "머신러닝",
+    "model category": "모델 분류",
+    "sensitivity": "민감도",
+    "specificity": "특이도",
+    "time-series": "시계열",
+}
+
+
+def _english_heavy(text: str) -> bool:
+    letters = [char for char in str(text or "") if char.isalpha()]
+    if not letters:
+        return False
+    korean_count = sum(1 for char in letters if "가" <= char <= "힣")
+    english_count = sum(1 for char in letters if ("a" <= char.lower() <= "z"))
+    return english_count >= 20 and english_count > korean_count * 1.4
+
+
+def _korean_user_text(text: str, *, source_label: str = "문서 근거") -> str:
+    cleaned = _clean_text(text)
+    if not cleaned:
+        return ""
+    translated = force_korean_analysis_text(cleaned)
+    if translated and not _english_heavy(translated):
+        return translated
+    if _english_heavy(cleaned):
+        second_pass = force_korean_analysis_text(cleaned[:900])
+        if second_pass and not _english_heavy(second_pass):
+            return second_pass
+        return f"{source_label}: 영문 원문에서 확인된 핵심 내용을 기준으로 정리했습니다. 로컬 번역기가 처리하지 못한 전문 용어는 원문 키워드에 함께 표시했습니다."
+    return translated or cleaned
+
+
+def _keyword_text(keyword: object) -> str:
+    raw = str(keyword or "").strip()
+    if not raw:
+        return ""
+    normalized = raw.lower().strip(" :;,.()[]{}")
+    return KEYWORD_TRANSLATIONS.get(normalized) or raw
 
 
 def _focused_relevant_text(relevant_chunks: list[dict], fallback_text: str) -> str:
@@ -136,16 +183,19 @@ def build_concise_fallback_answer(question: str, fallback_answer: dict) -> str:
     ]
 
     summary = _clean_text(fallback_answer.get("summary", ""))
-    sections.append(summary[:900] if summary else "요약할 본문이 부족합니다.")
+    sections.append(_korean_user_text(summary[:900], source_label="핵심 요약") if summary else "요약할 본문이 부족합니다.")
 
     metrics = fallback_answer.get("metrics") or []
     if metrics:
         sections.extend(["", "[수치 후보]"])
-        sections.extend(f"- {metric}" for metric in metrics[:8])
+        sections.extend(f"- {_korean_user_text(metric, source_label='수치 근거')}" for metric in metrics[:8])
 
     keywords = fallback_answer.get("keywords") or []
     if keywords:
-        sections.extend(["", "[중요 키워드]", ", ".join(keywords[:10])])
+        keyword_items = [_keyword_text(keyword) for keyword in keywords[:10]]
+        keyword_items = [keyword for keyword in keyword_items if keyword]
+        keyword_label = "[핵심 키워드]"
+        sections.extend(["", keyword_label, ", ".join(keyword_items)])
 
     if relevant_chunks:
         sections.extend(["", "[근거 구간]"])
@@ -153,7 +203,7 @@ def build_concise_fallback_answer(question: str, fallback_answer: dict) -> str:
             source_label = chunk.get("source_label") or f"Chunk {chunk.get('chunk_index', '?')}"
             focused = _top_sentences(chunk.get("text", ""), 1, question)
             preview = (focused[0] if focused else _clean_text(chunk.get("text", "")))[:360]
-            sections.append(f"- {chunk.get('filename', '문서')} {source_label}: {preview}")
+            sections.append(f"- {chunk.get('filename', '문서')} {source_label}: {_korean_user_text(preview, source_label='근거 구간')}")
 
     return "\n".join(section for section in sections if str(section).strip())
 

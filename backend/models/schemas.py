@@ -270,10 +270,15 @@ class AnalysisResponse(BaseModel):
     llm_error: str | None = None
     suggested_questions: list[str] = Field(default_factory=list)
     web_sources: list[dict[str, Any]] = Field(default_factory=list)
+    comparison_table: list[dict[str, Any]] = Field(default_factory=list)
+    time_series_comparison_table: list[dict[str, Any]] = Field(default_factory=list)
+    experiment_comparison_table: list[dict[str, Any]] = Field(default_factory=list)
+    experiment_chart: dict[str, Any] | None = None
+    compare: dict[str, Any] = Field(default_factory=dict)
 
 
 class VisualResponse(BaseModel):
-    """표/그래프/이미지/마인드맵 생성 API 응답입니다."""
+    """표/그래프/이미지 생성 API 응답입니다."""
 
     visual: dict[str, Any]
 

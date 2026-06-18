@@ -4,6 +4,19 @@
 import re
 
 
+def is_compare_request(question: str) -> bool:
+    keywords = [
+        "비교",
+        "차이",
+        "공통점",
+        "다른점",
+        "비교분석",
+        "compare",
+    ]
+    q = (question or "").lower()
+    return any(keyword.lower() in q for keyword in keywords)
+
+
 DOMAIN_TERMS = {
     "RAG",
     "LLM",
@@ -19,7 +32,6 @@ DOMAIN_TERMS = {
     "재현율",
     "데이터셋",
     "벤치마크",
-    "마인드맵",
     "시각화",
 }
 

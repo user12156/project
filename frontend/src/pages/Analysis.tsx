@@ -2,7 +2,7 @@
 // TypeScript 변경 표시: 기존 JS 로직은 유지하면서 함수 인자와 화면 props에 실제 타입을 붙여 TypeScript 검사를 통과하게 했습니다.
 // 초보자 안내: 사용자가 실제로 보게 되는 한 화면 단위의 React 페이지 컴포넌트입니다.
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { FiChevronLeft, FiChevronRight, FiFileText, FiGrid, FiImage, FiPaperclip, FiRefreshCcw } from 'react-icons/fi';
@@ -420,6 +420,80 @@ const EvidenceMarkdown = ({ text }) => {
   );
 };
 
+const splitRevealChunks = (text = '') => {
+  const chunks: string[] = [];
+  String(text || '')
+    .split('\n')
+    .forEach((line) => {
+      if (!line.trim()) {
+        chunks.push('');
+        return;
+      }
+
+      const isStructuredLine = /^(\s*[-*+]\s+|\s*\d+[.)]\s+|\s{0,3}#{1,6}\s+|\s*\|)/.test(line);
+      const sentenceParts = line.match(/[^.!?。！？\n]+[.!?。！？]?/g) || [line];
+      const shouldSplitSentences = !isStructuredLine && line.length > 72 && sentenceParts.length > 1;
+
+      if (shouldSplitSentences) {
+        sentenceParts.map((part) => part.trim()).filter(Boolean).forEach((part) => chunks.push(part));
+        return;
+      }
+
+      chunks.push(line);
+    });
+
+  return chunks.length > 0 ? chunks : [''];
+};
+
+const shouldRevealMessage = (message: any = {}) => {
+  if (!message?.createdAt || !String(message.id || '').startsWith('ai-')) return false;
+  const createdAt = new Date(message.createdAt).getTime();
+  return Number.isFinite(createdAt) && Date.now() - createdAt < 9000;
+};
+
+const ProgressiveEvidenceMarkdown = ({ text, animate = false, onProgress }: { text: string; animate?: boolean; onProgress?: () => void }) => {
+  const chunks = useMemo(() => splitRevealChunks(text), [text]);
+  const [visibleCount, setVisibleCount] = useState(() => (animate ? 1 : chunks.length));
+  const isComplete = visibleCount >= chunks.length;
+
+  useEffect(() => {
+    if (!animate) {
+      setVisibleCount(chunks.length);
+      return undefined;
+    }
+
+    setVisibleCount(1);
+    if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      setVisibleCount(chunks.length);
+      return undefined;
+    }
+
+    const timer = window.setInterval(() => {
+      setVisibleCount((current) => {
+        const next = Math.min(current + 1, chunks.length);
+        if (next >= chunks.length) window.clearInterval(timer);
+        return next;
+      });
+      onProgress?.();
+    }, 165);
+
+    return () => window.clearInterval(timer);
+  }, [animate, chunks.length, onProgress]);
+
+  useEffect(() => {
+    if (animate) onProgress?.();
+  }, [animate, visibleCount, onProgress]);
+
+  const visibleText = chunks.slice(0, visibleCount).join('\n');
+
+  return (
+    <div className={animate && !isComplete ? 'line-reveal active' : 'line-reveal'}>
+      <EvidenceMarkdown text={visibleText} />
+      {animate && !isComplete && <span className="line-reveal-caret" aria-hidden="true" />}
+    </div>
+  );
+};
+
 const buildLocalFallbackAnswer = (question, files, messages) => {
   const sourceText = messages
     .filter((message) => ['ai', 'asset', 'system'].includes(message.role))
@@ -536,6 +610,38 @@ function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, c
     if (!url) return;
     URL.revokeObjectURL(url);
     delete sourceObjectUrlsRef.current[fileKey];
+  };
+
+  const warmConvertiblePreviews = async (targetFiles: any[] = []) => {
+    for (const file of targetFiles) {
+      if (!isUploadableFile(file)) continue;
+      const filename = file.name || '';
+      const extension = filename.split('.').pop()?.toLowerCase() || '';
+      if (!['hwp', 'hwpx'].includes(extension)) continue;
+
+      const fileKey = getFileKey(file);
+      cacheSourcePreview(fileKey, {
+        kind: 'loading',
+        url: '',
+        text: '',
+        message: 'HWP/HWPX 문서를 파일별로 PDF 미리보기로 변환하는 중입니다.',
+        fileKey,
+      });
+
+      try {
+        const response = await analysisAPI.previewDocument(file);
+        const pdfBlob = response.data instanceof Blob
+          ? response.data
+          : new Blob([response.data], { type: 'application/pdf' });
+        revokeSourceObjectUrl(fileKey);
+        const previewUrl = URL.createObjectURL(pdfBlob);
+        sourceObjectUrlsRef.current[fileKey] = previewUrl;
+        cacheSourcePreview(fileKey, { kind: 'pdf', url: previewUrl, text: '', message: '', fileKey });
+      } catch (error) {
+        const message = error.response?.data?.detail || error.userMessage || '문서를 PDF 미리보기로 변환하지 못했습니다.';
+        cacheSourcePreview(fileKey, { kind: 'meta', url: '', text: '', message, fileKey });
+      }
+    }
   };
 
   const requireLoginForSave = () => {
@@ -843,6 +949,7 @@ function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, c
       setFiles([]);
       setActiveFiles(nextActiveFiles);
       setSelectedSourceKey(getFileKey(selectedFiles[0]));
+      warmConvertiblePreviews(selectedFiles);
       saveSourceFiles([recentConversationIdRef.current, effectiveProjectId], nextActiveFiles);
       handleCreateVisualFromFiles(pendingVisualType, nextFiles, nextActiveFiles);
       event.target.value = '';
@@ -852,6 +959,7 @@ function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, c
 
     setFiles(nextFiles);
     setSelectedSourceKey(getFileKey(selectedFiles[0]));
+    warmConvertiblePreviews(selectedFiles);
     setPromptText((current) => (current.trim() ? current : '분석해 드릴까요?'));
     writeJson(getActiveAnalysisSessionKey(), {
       id: recentConversationIdRef.current,
@@ -1093,7 +1201,7 @@ function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, c
     const activeUploadFiles = activeFiles.filter(isUploadableFile);
     const pendingFiles = newFiles.length > 0 ? mergeUniqueFiles(activeFiles, newFiles) : [...activeFiles];
     const question = nextQuestion || '업로드한 문서를 요약해줘';
-    const compareMode = isCompareQuestion(question);
+    const compareMode = isCompareQuestion(question) || pendingFiles.length >= 2;
     const selectedPreviewFile = selectedSourceFile && pendingFiles.some((file) => getFileKey(file) === getFileKey(selectedSourceFile))
       ? selectedSourceFile
       : null;
@@ -1597,6 +1705,14 @@ function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, c
     target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   };
 
+  const scrollToLatestMessage = useCallback(() => {
+    const area = scrollRef.current;
+    if (!area) return;
+    window.requestAnimationFrame(() => {
+      area.scrollTo({ top: area.scrollHeight, behavior: 'smooth' });
+    });
+  }, []);
+
   return (
     <Container>
       <input type="file" ref={fileInputRef} onChange={handleFileChange} style={{ display: 'none' }} multiple />
@@ -1761,7 +1877,13 @@ function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, c
                 {message.role === 'ai' ? (
                   <AiRow>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxWidth: '80%' }}>
-                      <div className="ai-box markdown-body"><EvidenceMarkdown text={message.text} /></div>
+                      <div className="ai-box markdown-body">
+                        <ProgressiveEvidenceMarkdown
+                          text={message.text}
+                          animate={shouldRevealMessage(message)}
+                          onProgress={scrollToLatestMessage}
+                        />
+                      </div>
                       {message.suggestedQuestions && message.suggestedQuestions.length > 0 && (
                         <div className="suggested-questions">
                           {message.suggestedQuestions.map((q, idx) => (

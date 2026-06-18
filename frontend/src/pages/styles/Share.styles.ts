@@ -425,6 +425,15 @@ export const ProjectLoadBar = styled.div`
     background: #115e59;
   }
 
+  .visual-load-btn {
+    min-width: 136px;
+    background: #7c3aed;
+  }
+
+  .visual-load-btn:hover {
+    background: #6d28d9;
+  }
+
   .support-load-btn {
     min-width: 152px;
     background: #4f46e5;
@@ -600,11 +609,34 @@ export const TimelineNode = styled.article<{ $active?: boolean }>`
     padding: 16px 18px;
   }
 
+  .timeline-card-head {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    margin-bottom: 8px;
+  }
+
+  .timeline-number {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 38px;
+    height: 24px;
+    padding: 0 9px;
+    border-radius: 999px;
+    background: ${(props) => (props.$active ? '#0ea5a4' : '#f1f5f9')};
+    color: ${(props) => (props.$active ? '#ffffff' : '#64748b')};
+    font-size: 12px;
+    font-weight: 900;
+    box-sizing: border-box;
+  }
+
   .project-label {
     color: #0ea5a4;
     font-size: 12px;
     font-weight: 800;
-    margin-bottom: 8px;
+    margin-bottom: 0;
+    min-width: 0;
   }
 
   .project-label.support {
@@ -1402,6 +1434,92 @@ export const ProjectPickerGrid = styled.div`
   @media (max-width: 560px) {
     grid-template-columns: 1fr;
     padding: 18px;
+  }
+`;
+
+export const VisualPickerCard = styled.button<{ $loaded?: boolean }>`
+  border: 1px solid ${(props) => (props.$loaded ? '#99f6e4' : '#e2e8f0')};
+  border-radius: 8px;
+  background: ${(props) => (props.$loaded ? '#f0fdfa' : '#ffffff')};
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+
+  &:hover {
+    transform: translateY(-2px);
+    border-color: #0ea5a4;
+    box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
+  }
+
+  .visual-thumb {
+    height: 132px;
+    background: #f8fafc;
+    border-bottom: 1px solid #e2e8f0;
+    overflow: hidden;
+  }
+
+  .visual-thumb .dynamic-visualizer {
+    min-height: 132px !important;
+    height: 132px;
+    border: 0;
+    border-radius: 0;
+    transform: scale(0.82);
+    transform-origin: top left;
+    width: 122%;
+  }
+
+  .visual-info {
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .tag-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    min-height: 22px;
+    padding: 3px 9px;
+    border-radius: 999px;
+    background: #f1f5f9;
+    color: #475569;
+    font-size: 10.5px;
+    font-weight: 850;
+  }
+
+  .loaded-label {
+    color: #0ea5a4;
+    font-size: 11px;
+    font-weight: 850;
+  }
+
+  strong {
+    color: #0f172a;
+    font-size: 14px;
+    font-weight: 850;
+    line-height: 1.35;
+  }
+
+  .visual-info > span:not(.tag):not(.loaded-label) {
+    color: #64748b;
+    font-size: 12px;
+    font-weight: 650;
+    line-height: 1.45;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
   }
 `;
 

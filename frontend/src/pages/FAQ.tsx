@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { FiGrid, FiImage, FiPaperclip } from "react-icons/fi";
 import styled from "styled-components";
 import papermateLogo from "../assets/papermate-logo.png";
 
@@ -266,6 +267,37 @@ const FAQContent = styled.div`
     margin-bottom: 10px;
   }
 
+  .question a {
+    color: #0f766e;
+    font-weight: 800;
+    text-decoration: none;
+  }
+
+  .question a:hover {
+    text-decoration: underline;
+  }
+
+  .inline-clip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin: 0 2px;
+    padding: 2px 7px;
+    border: 1px solid rgba(15, 118, 110, 0.18);
+    border-radius: 999px;
+    background: rgba(240, 253, 250, 0.9);
+    color: #0f766e;
+    font-weight: 800;
+    white-space: nowrap;
+    vertical-align: baseline;
+  }
+
+  .inline-clip svg {
+    width: 15px;
+    height: 15px;
+    stroke-width: 2.4;
+  }
+
   .popup-overlay {
     position: fixed;
     inset: 0;
@@ -483,28 +515,82 @@ function FAQC({ onBackHome, showHomeLogo = true }: FAQProps) {
         {activeTab === "usage" && (
           <>
             <div className="question">
-              <h3>Q1. 로그인 없이도 사용할 수 있나요?</h3>
+              <h3>Q1. HWP 파일을 HWPX로 어떻게 변환하나요?</h3>
               <p>
-                네, 일부 기능은 로그인 없이도 사용할 수 있습니다. 다만 프로젝트 저장, 공유, 최근 기록 복원 등은 로그인 후에 이용하실 수 있습니다.
+                HWP 파일은 PaperMate에서 기본 분석만 가능합니다. 문서 미리보기, 이미지·차트 추출 등 전체 기능을 사용하려면 한글 프로그램에서 파일을 연 뒤 <strong>다른 이름으로 저장</strong>을 선택하고 파일 형식을 <strong>HWPX</strong>로 저장해 업로드해주세요.
+              </p>
+              <p>
+                한글 프로그램이 없다면 한컴 다운로드 센터에서 필요한 뷰어 또는 설치 파일을 확인할 수 있습니다.{" "}
+                <a
+                  href="https://www.hancom.com/support/downloadCenter/download"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  한컴 다운로드 센터 열기
+                </a>
+              </p>
+              <p>
+                다운로드 센터가 열리면 검색창에 <strong>HWPX 변환기</strong>를 입력해 변환 도구를 찾아주세요.
               </p>
             </div>
 
             <div className="question">
-              <h3>Q2. 문서를 어떻게 업로드하나요?</h3>
+              <h3>Q2. 문서를 어떻게 업로드하고 저장하나요?</h3>
               <p>
-                홈 화면에서 분석 메뉴(+)를 눌러 문서를 업로드하시면 AI가 문서 내용을 자동으로 분석 및 요약합니다. 업로드 가능한 파일 형식은 PDF, HWP, HWPX, DOCX, 이미지 등입니다.
+                분석 화면의
+                <span className="inline-clip">
+                  <FiPaperclip aria-hidden="true" />
+                  클립 버튼
+                </span>
+                을 눌러 문서를 업로드하시면 AI가 문서 내용을 자동으로 분석 및 요약합니다. 업로드 가능한 파일 형식은 PDF, HWP, HWPX, DOCX, 이미지 등입니다.
+              </p>
+              <p>
+                모든 분석을 마친 뒤 초대코드로 프로젝트를 저장할 수 있습니다. 프로젝트를 저장해야 공유 기능을 사용할 수 있으니, 팀원과 함께 보려면 먼저 프로젝트 저장을 완료해주세요.
               </p>
             </div>
 
             <div className="question">
-              <h3>Q3. 팀원과 어떻게 공유하나요?</h3>
+              <h3>Q3. 표 만들기와 이미지 추출은 어떻게 하나요?</h3>
               <p>
-                공유 페이지에서 초대 코드를 생성하거나 입력하여 팀원을 초대하실 수 있습니다. 프로젝트를 함께 열람하고 협업할 수 있습니다.
+                문서를 업로드한 뒤 클립 메뉴를 열고
+                <span className="inline-clip">
+                  <FiGrid aria-hidden="true" />
+                  표 만들기
+                </span>
+                를 누르면 문서 내용에서 표로 정리할 수 있는 정보를 추출해 표를 생성합니다.
+              </p>
+              <p>
+                같은 메뉴에서
+                <span className="inline-clip">
+                  <FiImage aria-hidden="true" />
+                  이미지 파일 추출
+                </span>
+                을 누르면 문서에 포함된 이미지나 시각 자료를 찾아 결과 영역에 정리합니다.
+              </p>
+              <p>
+                PaperMate는 미리보기에 표시된 문서를 기준으로 내용을 요약하고 답변합니다. 분석 전에 미리보기에서 올바른 문서가 열렸는지 확인해주세요.
               </p>
             </div>
 
             <div className="question">
-              <h3>Q4. FAQ에 없는 문의는 어디로 하나요?</h3>
+              <h3>Q4. 생성된 표, 이미지, 그래프는 어디서 확인하고 저장하나요?</h3>
+              <p>
+                생성된 표, 이미지 추출 결과, 그래프는 미리보기창 옆의 <strong>보관함</strong> 버튼을 눌러 확인할 수 있습니다. 보관함에서 원하는 자료를 선택하면 전체 보기로 크게 열어볼 수 있습니다.
+              </p>
+              <p>
+                전체 보기 화면에서 필요한 자료를 <strong>시각화 보관함</strong>에 저장할 수 있습니다. 저장한 시각화 자료는 공유작업공간의 <strong>시각화 불러오기</strong> 버튼으로 다시 불러와 팀원과 함께 확인할 수 있습니다.
+              </p>
+            </div>
+
+            <div className="question">
+              <h3>Q5. 팀원과 공유작업공간에서 어떻게 협업하나요?</h3>
+              <p>
+                공유작업공간에서 초대 코드를 생성하거나 입력하여 팀원을 초대하실 수 있습니다. 프로젝트를 함께 열람하고 협업할 수 있습니다.
+              </p>
+            </div>
+
+            <div className="question">
+              <h3>Q6. FAQ에 없는 문의는 어디로 하나요?</h3>
               <p>
                 추가 문의가 필요하시면 서비스 제공자에게 문의하거나 앱 내 지원 채널을 통해 질문을 남겨주세요.
               </p>
@@ -547,21 +633,28 @@ function FAQC({ onBackHome, showHomeLogo = true }: FAQProps) {
         {activeTab === "other" && (
           <>
             <div className="question">
-              <h3>Q1. 모바일에서도 사용할 수 있나요?</h3>
+              <h3>Q1. 로그인 없이도 사용할 수 있나요?</h3>
+              <p>
+                네, 일부 기능은 로그인 없이도 사용할 수 있습니다. 다만 프로젝트 저장, 공유, 최근 기록 복원 등은 로그인 후에 이용하실 수 있습니다.
+              </p>
+            </div>
+
+            <div className="question">
+              <h3>Q2. 모바일에서도 사용할 수 있나요?</h3>
               <p>
                 현재는 웹 브라우저 기반 서비스로, 모바일 브라우저에서도 접속 가능합니다. 하지만 데스크톱 환경에 최적화되어 있어 작은 화면에서는 일부 UI가 제한될 수 있습니다.
               </p>
             </div>
 
             <div className="question">
-              <h3>Q2. 사용 시 유의할 점이 있나요?</h3>
+              <h3>Q3. 사용 시 유의할 점이 있나요?</h3>
               <p>
                 분석 결과는 AI 기반 요약이므로 중요한 공식이나 표, 이미지 내용은 일부 누락될 수 있습니다. 중요한 문서는 원본 파일을 보관하고, 결과를 검토 후 직접 확인하는 것이 안전합니다.
               </p>
             </div>
 
             <div className="question">
-              <h3>Q3. 다른 고객 문의는 어떻게 하나요?</h3>
+              <h3>Q4. 다른 고객 문의는 어떻게 하나요?</h3>
               <p>
                 고객 문의가 필요한 경우 서비스 제공자의 연락처 또는 앱 내 지원 채널을 통해 문의해 주세요. 문의 시 가능한 자세한 내용을 함께 전달하면 빠른 답변을 받을 수 있습니다.
               </p>
