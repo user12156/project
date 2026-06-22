@@ -150,8 +150,8 @@ def rank_relevant_chunks(question: str, extracted_docs: list[dict], limit: int =
     # 2. Sort by base score and take dynamic Top K for semantic reranking
     base_ranked.sort(key=lambda item: item["base_score"], reverse=True)
     
-    # Dynamic threshold: 15% of total chunks, minimum 5, maximum 15.
-    dynamic_top_k = min(15, max(5, int(len(base_ranked) * 0.15)))
+    # Dynamic threshold: 25% of total chunks, minimum 10, maximum 40.
+    dynamic_top_k = min(40, max(10, int(len(base_ranked) * 0.25)))
     top_candidates = base_ranked[:dynamic_top_k]
     
     if question and top_candidates:

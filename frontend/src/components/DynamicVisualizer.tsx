@@ -4,15 +4,13 @@ import {
   Bar,
   LineChart,
   Line,
-  PieChart,
-  Pie,
-  Cell,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   Legend,
-  ResponsiveContainer
+  ResponsiveContainer,
+  Cell
 } from 'recharts';
 
 export const DynamicVisualizer = ({
@@ -301,34 +299,6 @@ export const DynamicVisualizer = ({
     const leftYAxisDomain: any = looksLikeYear ? [minValue - yPadding, maxValue + yPadding] : ['auto', 'auto'];
     const yTickFormatter = (value: any) => looksLikeYear ? String(Math.round(Number(value))) : String(value);
 
-    if (chartType === 'pie') {
-      const pieData = safeData;
-      const pieColor = series[0]?.color || '#0ea5a4';
-      const COLORS = [pieColor, '#f59e0b', '#3b82f6', '#ef4444', '#10b981', '#8b5cf6'];
-      return (
-        <ResponsiveContainer width="100%" height={300}>
-          <PieChart>
-            <Pie
-              data={pieData}
-              dataKey={series[0].dataKey}
-              nameKey={xKey}
-              cx="50%"
-              cy="50%"
-              outerRadius={100}
-              fill={pieColor}
-              label
-            >
-              {pieData.map((entry: any, index: number) => (
-                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-              ))}
-            </Pie>
-            <Tooltip />
-            <Legend />
-          </PieChart>
-        </ResponsiveContainer>
-      );
-    }
-
     const hasRightAxis = series.some((s: any) => s.yAxisId === 'right');
 
     if (chartType === 'line') {
@@ -345,19 +315,23 @@ export const DynamicVisualizer = ({
               contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}
             />
             <Legend wrapperStyle={{ paddingTop: '20px' }} />
-            {series.map((s: any, idx: number) => (
-              <Line
-                key={idx}
-                yAxisId={s.yAxisId || 'left'}
-                type="monotone"
-                dataKey={s.dataKey}
-                name={s.name || s.dataKey}
-                stroke={s.color || '#0ea5a4'}
-                strokeWidth={2.5}
-                dot={{ r: 5, strokeWidth: 2, fill: '#ffffff' }}
-                activeDot={{ r: 7 }}
-              />
-            ))}
+            {series.map((s: any, idx: number) => {
+              const CHART_COLORS = ['#0ea5a4', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#10b981', '#6366f1'];
+              const color = s.color || CHART_COLORS[idx % CHART_COLORS.length];
+              return (
+                <Line
+                  key={idx}
+                  yAxisId={s.yAxisId || 'left'}
+                  type="monotone"
+                  dataKey={s.dataKey}
+                  name={s.name || s.dataKey}
+                  stroke={color}
+                  strokeWidth={2.5}
+                  dot={{ r: 5, strokeWidth: 2, fill: '#ffffff' }}
+                  activeDot={{ r: 7 }}
+                />
+              );
+            })}
           </LineChart>
         </ResponsiveContainer>
       );
@@ -378,17 +352,25 @@ export const DynamicVisualizer = ({
             contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}
           />
           <Legend wrapperStyle={{ paddingTop: '20px' }} />
-          {series.map((s: any, idx: number) => (
-            <Bar
-              key={idx}
-              yAxisId={s.yAxisId || 'left'}
-              dataKey={s.dataKey}
-              name={s.name || s.dataKey}
-              fill={s.color || '#0ea5a4'}
-              radius={[4, 4, 0, 0]}
-              maxBarSize={50}
-            />
-          ))}
+          {series.map((s: any, idx: number) => {
+            const CHART_COLORS = ['#0ea5a4', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#10b981', '#6366f1'];
+            const color = s.color || CHART_COLORS[idx % CHART_COLORS.length];
+            return (
+              <Bar
+                key={idx}
+                yAxisId={s.yAxisId || 'left'}
+                dataKey={s.dataKey}
+                name={s.name || s.dataKey}
+                fill={color}
+                radius={[4, 4, 0, 0]}
+                maxBarSize={50}
+              >
+                {series.length === 1 && safeData.map((entry: any, cellIdx: number) => (
+                  <Cell key={`cell-${cellIdx}`} fill={CHART_COLORS[cellIdx % CHART_COLORS.length]} />
+                ))}
+              </Bar>
+            );
+          })}
         </BarChart>
       </ResponsiveContainer>
     );

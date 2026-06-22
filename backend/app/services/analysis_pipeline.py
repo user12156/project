@@ -17,6 +17,7 @@ from .fallback_analysis import (
 from .analysis.grounding import validate_grounding
 from .llm.service import analyze_with_llm
 from .translation import translate_analysis_payload
+from .visuals.auto_charter import auto_chart_config
 from .web_search import search_results_to_docs, wants_web_search, web_search
 
 
@@ -165,6 +166,19 @@ def _has_metric_evidence(fallback_answer: dict) -> bool:
     return bool((fallback_answer.get("metrics") or []) or (fallback_answer.get("document_metrics") or []))
 
 
+def _metric_label(fallback_answer: dict) -> str:
+    metrics = fallback_answer.get("metrics") or fallback_answer.get("document_metrics") or []
+    if metrics:
+        for m in metrics:
+            text = str(m).strip()
+            match = re.match(r"^([가-힣a-zA-Z\s]+)", text)
+            if match and match.group(1).strip():
+                return match.group(1).strip()[:20]
+            if text and re.search(r"[가-힣]", text):
+                return text[:20]
+    return "주요 수치"
+
+
 def _local_suggested_questions(fallback_answer: dict) -> list[str]:
     """LLM 없이도 문서 로컬 추출 결과만으로 후속 칩을 만듭니다."""
 
@@ -172,15 +186,26 @@ def _local_suggested_questions(fallback_answer: dict) -> list[str]:
         return []
 
     topic = _topic_label(fallback_answer)
-    metric_word = "수치 후보" if _has_metric_evidence(fallback_answer) else "핵심 항목"
-    visual_questions = [
-        f"[추천 시각화: 90점] 문서의 {metric_word}를 비교 막대 그래프 그려줘",
-        f"[추천 시각화: 85점] {topic} 관련 항목을 표로 정리해줘",
-    ]
-    related_questions = [
-        f"[연관 질문] 이 문서의 핵심 근거는 뭐야?",
-        f"[연관 질문] 이 문서에서 추가로 확인해야 할 {metric_word}는 뭐야?",
-    ]
+    has_metrics = _has_metric_evidence(fallback_answer)
+    
+    if has_metrics:
+        metric_word = _metric_label(fallback_answer)
+        visual_questions = [
+            f"[추천 시각화: 90점] {topic}의 {metric_word} 등 주요 지표를 막대 그래프로 그려줘",
+            f"[추천 시각화: 85점] {topic} 관련 세부 항목을 표로 정리해줘",
+        ]
+        related_questions = [
+            f"[연관 질문] 이 문서에서 {metric_word}의 핵심 근거는 뭐야?",
+            f"[연관 질문] {topic}에 대해 추가로 확인해야 할 내용은 뭐야?",
+        ]
+    else:
+        visual_questions = [
+            f"[추천 시각화: 90점] {topic} 관련 항목을 표로 깔끔하게 정리해줘",
+        ]
+        related_questions = [
+            f"[연관 질문] {topic}의 핵심 근거는 뭐야?",
+            f"[연관 질문] 이 문서에서 추가로 확인해야 할 내용은 뭐야?",
+        ]
     return [*visual_questions, *related_questions]
 
 
@@ -382,7 +407,9 @@ def run_analysis_pipeline(
             "suggested_questions": llm_answer.get("suggested_questions", []) or local_suggested_questions,
         })
 
-    visual_config = _extract_json_object(llm_answer["answer"]) if is_visual_request else None
+    raw_visual_config = _extract_json_object(llm_answer["answer"]) if is_visual_request else None
+    visual_config = auto_chart_config(raw_visual_config) if raw_visual_config else None
+
     if visual_config and _validate_visual_config(visual_config, extracted_docs):
         return {
             **fallback_answer,

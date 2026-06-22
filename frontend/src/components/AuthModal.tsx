@@ -1,4 +1,4 @@
-﻿import React, { ChangeEvent, KeyboardEvent, RefObject, useEffect, useRef, useState } from 'react';
+import React, { ChangeEvent, KeyboardEvent, RefObject, useEffect, useRef, useState } from 'react';
 import { FcGoogle } from 'react-icons/fc';
 import { RiKakaoTalkFill } from 'react-icons/ri';
 import { SiNaver } from 'react-icons/si';
@@ -174,10 +174,9 @@ function AuthModal({
             setRuntimeGoogleClientId(clientId);
             return;
           }
-          onGoogleError('Google Client ID가 서버 .env에도 설정되지 않았습니다.');
         })
         .catch(() => {
-          if (!cancelled) onGoogleError('Google Client ID 설정을 서버에서 불러오지 못했습니다.');
+          // Silent catch
         });
 
       return () => {
@@ -234,10 +233,9 @@ function AuthModal({
         const restApiKey = String(response.data?.rest_api_key || '').trim();
         const redirectUri = String(response.data?.redirect_uri || '').trim();
         setKakaoConfig({ restApiKey, redirectUri });
-        if (!restApiKey) onGoogleError('서버 .env에 KAKAO_REST_API_KEY가 설정되지 않았습니다.');
       })
       .catch(() => {
-        if (!cancelled) onGoogleError('카카오 로그인 설정을 서버에서 불러오지 못했습니다.');
+        // Silent catch
       });
 
     return () => {
@@ -255,10 +253,9 @@ function AuthModal({
         const clientId = String(response.data?.client_id || '').trim();
         const redirectUri = String(response.data?.redirect_uri || '').trim();
         setNaverConfig({ clientId, redirectUri });
-        if (!clientId) onGoogleError('서버 .env에 NAVER_CLIENT_ID가 설정되지 않았습니다.');
       })
       .catch(() => {
-        if (!cancelled) onGoogleError('네이버 로그인 설정을 서버에서 불러오지 못했습니다.');
+        // Silent catch
       });
 
     return () => {

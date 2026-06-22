@@ -93,6 +93,33 @@ def _document_from_units(
     }
 
 
+def _chunk_continuous_text_to_units(text: str, chunk_size: int = 1500) -> list[dict]:
+    if not text:
+        return [{"section_index": 1, "source_label": "문서 파트 1", "text": ""}]
+    lines = text.split("\n")
+    units = []
+    current_text = ""
+    part_index = 1
+    for line in lines:
+        if len(current_text) + len(line) > chunk_size and current_text:
+            units.append({
+                "section_index": part_index,
+                "source_label": f"문서 파트 {part_index}",
+                "text": current_text.strip()
+            })
+            part_index += 1
+            current_text = line + "\n"
+        else:
+            current_text += line + "\n"
+    if current_text.strip():
+        units.append({
+            "section_index": part_index,
+            "source_label": f"문서 파트 {part_index}",
+            "text": current_text.strip()
+        })
+    return units
+
+
 def extract_file_document(filename: str, content: bytes) -> dict:
     extension = Path(filename).suffix.lower()
     if extension == ".pdf":
@@ -112,7 +139,7 @@ def extract_file_document(filename: str, content: bytes) -> dict:
         return _document_from_units(
             filename,
             "HWPX/OWPML",
-            [{"section_index": 1, "text": text}],
+            _chunk_continuous_text_to_units(text),
             visual_assets=extract_zipped_visual_assets(content, filename),
         )
 
@@ -120,12 +147,12 @@ def extract_file_document(filename: str, content: bytes) -> dict:
         return _document_from_units(
             filename,
             "DOCX",
-            [{"section_index": 1, "text": extract_docx(content)}],
+            _chunk_continuous_text_to_units(extract_docx(content)),
             visual_assets=extract_zipped_visual_assets(content, filename),
         )
 
     if extension in TEXT_EXTENSIONS:
-        return _document_from_units(filename, "TEXT", [{"section_index": 1, "text": extract_text(content)}])
+        return _document_from_units(filename, "TEXT", _chunk_continuous_text_to_units(extract_text(content)))
 
     if extension in IMAGE_EXTENSIONS:
         return _document_from_units(
@@ -138,13 +165,13 @@ def extract_file_document(filename: str, content: bytes) -> dict:
     if extension == ".hwp":
         text = extract_hwp(content)
         if text and not _is_hwp_extraction_failure(text):
-            return _document_from_units(filename, "HWP", [{"section_index": 1, "text": text}])
+            return _document_from_units(filename, "HWP", _chunk_continuous_text_to_units(text))
 
         parsed = parse_document(content, filename)
         parsed_text = _parsed_text_or_message(parsed, "")
         if parsed_text:
             text = parsed_text
-        return _document_from_units(filename, "HWP", [{"section_index": 1, "text": text}])
+        return _document_from_units(filename, "HWP", _chunk_continuous_text_to_units(text))
 
     return _document_from_units(filename, "UNKNOWN", [{"section_index": 1, "text": "지원하지 않는 파일 형식입니다."}])
 

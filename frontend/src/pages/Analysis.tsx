@@ -29,6 +29,7 @@ import { analysisAPI, projectAPI } from '../services/api';
 import {
   getProjectsKey,
   getRecentConversationsKey,
+  getActiveAnalysisSessionKey,
   readJson,
   SHARED_PROJECTS_KEY,
   upsertSharedProjectIndex,
@@ -84,15 +85,6 @@ const isCompareQuestion = (question = '') =>
 
 const SOURCE_FILE_DB = 'papermate-source-files';
 const SOURCE_FILE_STORE = 'sourceFiles';
-const ACTIVE_ANALYSIS_SESSION_KEY = 'papermate.activeAnalysisSession.v1';
-
-const getActiveAnalysisSessionKey = () => {
-  try {
-    return `${ACTIVE_ANALYSIS_SESSION_KEY}.${localStorage.getItem('userId') || localStorage.getItem('username') || 'guest'}`;
-  } catch {
-    return `${ACTIVE_ANALYSIS_SESSION_KEY}.guest`;
-  }
-};
 
 const compactIds = (ids: any[] = []) =>
   ids.map((id) => String(id || '').trim()).filter(Boolean).filter((id, index, arr) => arr.indexOf(id) === index);
@@ -420,7 +412,7 @@ const EvidenceMarkdown = ({ text }) => {
   );
 };
 
-const TYPEWRITER_CHAR_DELAY_MS = 50;
+const TYPEWRITER_CHAR_DELAY_MS = 15;
 const TYPEWRITER_CURSOR = '▌';
 
 const splitRevealCharacters = (text = '') => {
@@ -1043,6 +1035,10 @@ function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, c
       setIsClipMenuOpen(false);
       if (files.length > 0) {
         window.alert('새로 선택한 파일을 먼저 분석한 뒤 표 만들기를 눌러주세요.');
+        return;
+      }
+      if (activeFiles.length === 0) {
+        window.alert('먼저 분석할 문서를 업로드해 주세요.');
         return;
       }
       handleCreateVisualFromFiles('table', activeFiles, activeFiles);

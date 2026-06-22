@@ -13,11 +13,7 @@ from app.services.llm.prompt_builder import (
     is_visual_request,
     multimodal_gemini_parts,
 )
-from app.services.llm.response_utils import (
-    llm_error,
-    needs_korean_rewrite,
-    postprocess_visual_answer,
-)
+from app.services.llm.response_utils import llm_error, needs_korean_rewrite, parse_suggested_questions, postprocess_visual_answer
 
 
 def extract_gemini_text(payload: dict) -> str:
@@ -162,14 +158,9 @@ def analyze_with_gemini(
     if needs_korean_rewrite(answer):
         answer = rewrite_answer_with_gemini(answer, api_key, used_model)
 
-    from app.services.llm.chip_generator import generate_chips
-    visual_qs, general_qs = generate_chips(answer, "gemini", google_api_key=api_key)
-    questions = (visual_qs[:2] + general_qs[:2])[:4]
-    if len(questions) < 4:
-        questions += general_qs[2:2+(4-len(questions))]
-
+    main_answer, questions = parse_suggested_questions(answer)
     return {
-        "answer": answer,
+        "answer": main_answer,
         "suggested_questions": questions,
         "llm_used": True,
         "model": used_model,

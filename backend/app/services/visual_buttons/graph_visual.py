@@ -225,7 +225,7 @@ def guess_template(chart_json: dict) -> str:
     data = chart_json.get("data") or []
     sample_labels = " ".join(str(row.get(x_key, "")) for row in data[:12])
 
-    if "월" in title or "월별" in title or "월" in sample_labels or x_key.lower() == "month":
+    if x_key.lower() == "month" or ("1월" in sample_labels and "2월" in sample_labels) or re.search(r"^[1-9]월|1[0-2]월$", sample_labels):
         return "monthly_trend"
 
     if "지역" in title or x_key.lower() in {"region", "area"}:

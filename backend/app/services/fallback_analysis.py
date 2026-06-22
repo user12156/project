@@ -67,12 +67,18 @@ def _keyword_text(keyword: object) -> str:
     return KEYWORD_TRANSLATIONS.get(normalized) or raw
 
 
-def _focused_relevant_text(relevant_chunks: list[dict], fallback_text: str) -> str:
+def _focused_relevant_text(relevant_chunks: list[dict], fallback_text: str, question: str = "") -> str:
     if not relevant_chunks:
         return fallback_text
 
+    is_visual = "시각화" in question or "그래프" in question or "차트" in question or "표" in question
     top_score = float(relevant_chunks[0].get("score") or 0)
-    if top_score <= 0:
+    
+    if is_visual:
+        # 시각화 요청의 경우 데이터가 여러 청크에 분산된 표일 확률이 높으므로, 
+        # 점수 커트라인 없이 상위 15개 청크를 모두 제공하여 데이터 유실을 막습니다.
+        focused_chunks = relevant_chunks[:15]
+    elif top_score <= 0:
         focused_chunks = relevant_chunks[:1]
     else:
         min_score = top_score * CHUNK_RANK_WEIGHTS.focused_score_ratio
@@ -82,7 +88,19 @@ def _focused_relevant_text(relevant_chunks: list[dict], fallback_text: str) -> s
             if float(chunk.get("score") or 0) >= min_score
         ] or relevant_chunks[:1]
 
-    return "\n".join(chunk["text"] for chunk in focused_chunks if chunk.get("text")) or fallback_text
+    lines = []
+    for chunk in focused_chunks:
+        text = chunk.get("text")
+        if not text:
+            continue
+        label = chunk.get("source_label")
+        if not label or label in ("HWP", "HWPX", "PDF", "DOCX", "document"):
+            chunk_idx = chunk.get("chunk_index", 1)
+            label = f"문서 파트 {chunk_idx}"
+        else:
+            label = f"출처: {label}"
+        lines.append(f"[{label}]\n{text}")
+    return "\n\n".join(lines) or fallback_text
 
 
 def _analysis_payload(
@@ -143,13 +161,13 @@ def build_analysis_answer(question: str, extracted_docs: list[dict]) -> dict:
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
         # Phase 1: Rank chunks and extract combined document features
-        future_chunks = executor.submit(rank_relevant_chunks, question, cleaned_docs, 6)
+        future_chunks = executor.submit(rank_relevant_chunks, question, cleaned_docs, 20)
         future_doc_terms = executor.submit(_frequent_terms, combined_text)
         future_doc_metrics = executor.submit(_metric_candidates, combined_text)
         future_doc_topics = executor.submit(extract_topics, combined_text)
 
         relevant_chunks = future_chunks.result()
-        relevant_text = _focused_relevant_text(relevant_chunks, combined_text)
+        relevant_text = _focused_relevant_text(relevant_chunks, combined_text, question)
         
         # Phase 2: Extract relevant text features
         if relevant_text == combined_text:

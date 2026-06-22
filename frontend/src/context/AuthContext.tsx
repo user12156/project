@@ -121,8 +121,19 @@ export const AuthProvider = ({ children }) => {
     try {
       response = await authAPI.login(username, password);
     } catch (error) {
-      if (error?.response) throw error;
-      response = createLocalAuthResponse(username, password);
+      if (error?.response) {
+        if (error.response.status === 404 || error.response.status === 503) {
+          try {
+            response = createLocalAuthResponse(username, password, { allowCreate: false });
+          } catch (localError) {
+            throw localError;
+          }
+        } else {
+          throw error;
+        }
+      } else {
+        response = createLocalAuthResponse(username, password, { allowCreate: false });
+      }
     }
     const { access_token, user: userData } = response.data;
 
@@ -135,8 +146,15 @@ export const AuthProvider = ({ children }) => {
     try {
       response = await authAPI.signup(username, password);
     } catch (error) {
-      if (error?.response) throw error;
-      response = createLocalAuthResponse(username, password);
+      if (error?.response) {
+        if (error.response.status === 503) {
+          response = createLocalAuthResponse(username, password, { allowCreate: true });
+        } else {
+          throw error;
+        }
+      } else {
+        response = createLocalAuthResponse(username, password, { allowCreate: true });
+      }
     }
     const { access_token, user: userData } = response.data;
 

@@ -178,8 +178,9 @@ def extract_topics(text: str, limit: int | None = None) -> list[dict]:
         return []
 
     topic_limit = limit or settings.topic_model_limit
-    # Truncate text to max 10,000 chars to prevent extreme CPU time on huge documents
-    units = _split_units(text[:10000])
+    # Truncate text to max 10,000 chars (front and back) to prevent extreme CPU time on huge documents
+    sampled_text = text[:5000] + "\n...\n" + text[-5000:] if len(text) > 10000 else text
+    units = _split_units(sampled_text)
     if not units:
         return []
 

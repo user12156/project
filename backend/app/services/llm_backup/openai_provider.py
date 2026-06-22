@@ -10,6 +10,7 @@ from app.services.llm.response_utils import (
     extract_chunk_with_openai,
     llm_error,
     needs_korean_rewrite,
+    parse_suggested_questions,
     postprocess_visual_answer,
     rewrite_answer_in_korean,
 )
@@ -188,14 +189,10 @@ def analyze_with_openai(
     if needs_korean_rewrite(answer):
         answer = rewrite_answer_in_korean(answer, api_key, model)
 
-    from app.services.llm.chip_generator import generate_chips
-    visual_qs, general_qs = generate_chips(answer, "openai", openai_api_key=api_key)
-    questions = (visual_qs[:2] + general_qs[:2])[:4]
-    if len(questions) < 4:
-        questions += general_qs[2:2+(4-len(questions))]
+    main_answer, questions = parse_suggested_questions(answer)
 
     return {
-        "answer": answer,
+        "answer": main_answer,
         "suggested_questions": questions,
         "llm_used": True,
         "model": model,
