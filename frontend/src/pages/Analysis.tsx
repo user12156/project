@@ -1072,7 +1072,11 @@ function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, c
     ));
   };
 
-  const handleCompareSelectedDocuments = () => {
+  const handleCompareSelectedDocuments = async () => {
+    console.log('[선택 비교] 버튼 클릭됨', {
+      selectedCompareDocIds,
+      uploadedDocuments,
+    });
     const selectedDocuments = uploadedDocuments.filter((doc) => (
       selectedCompareDocIds.includes(doc.documentId)
     ));
@@ -1081,6 +1085,7 @@ function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, c
     ));
 
     if (selectedDocuments.length < 2) {
+      console.log('[선택 비교] 문서 2개 미만이라 중단', selectedDocuments);
       const assistantMessage = {
         id: `ai-compare-selected-documents-required-${Date.now()}`,
         role: 'ai',
@@ -1093,15 +1098,29 @@ function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, c
       return;
     }
 
-    setShowSelectCompareModal(false);
-    handleSendMessage([], '선택한 문서들을 비교 분석해줘.', {
+    const compareOptions = {
       compareMode: true,
       compareScope: 'selected',
       useCurrentFilesOnly: true,
       documentIds: selectedDocuments.map((doc) => doc.documentId),
       selectedSourceNames: selectedDocuments.map((doc) => doc.filename),
       requestFiles: selectedUploadFiles,
-    });
+    };
+    console.log('[선택 비교] API 호출 시작', compareOptions);
+
+    try {
+      setShowSelectCompareModal(false);
+      await handleSendMessage([], '선택한 문서들을 비교 분석해줘.', compareOptions);
+    } catch (error) {
+      console.error('[선택 비교] API 호출 전 오류', error);
+      const failureMessage = {
+        id: `ai-compare-selected-client-error-${Date.now()}`,
+        role: 'ai',
+        text: `선택 비교 요청을 시작하지 못했습니다: ${error?.message || '알 수 없는 프론트 오류'}`,
+        createdAt: nowIso(),
+      };
+      setMessages((prev) => [...prev, failureMessage]);
+    }
   };
 
   const handleCompareFileUpload = (event) => {
@@ -1368,6 +1387,14 @@ function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, c
     const requestSourceNames = Array.isArray(options.selectedSourceNames)
       ? options.selectedSourceNames
       : [];
+    if (compareScope === 'selected') {
+      console.log('[선택 비교] handleSendMessage 진입', {
+        conversationId: recentConversationIdRef.current,
+        documentIds: requestDocumentIds,
+        selectedSourceNames: requestSourceNames,
+        requestFileNames: requestFiles.map((file) => file.name || 'upload-file'),
+      });
+    }
     const hasNewUpload = newFiles.length > 0;
     if (!nextQuestion && pendingFiles.length === 0) {
       window.alert('질문을 입력하거나 파일을 선택해주세요.');
@@ -1442,6 +1469,9 @@ function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, c
       const analysisHistory = hasNewUpload || compareScope === 'selected'
         ? ''
         : getLatestAnalysisText(messages);
+      if (compareScope === 'selected') {
+        console.log('[선택 비교] analysisAPI.chat 호출 직전');
+      }
       const response = await analysisAPI.chat(question, requestFiles, {
         conversationId: recentConversationIdRef.current,
         documentIds: requestDocumentIds,
@@ -2287,7 +2317,11 @@ function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, c
               <button
                 type="button"
                 className="primary"
-                onClick={handleCompareSelectedDocuments}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  void handleCompareSelectedDocuments();
+                }}
                 disabled={uploadedDocuments.length === 0}
               >
                 선택 문서 비교

@@ -171,6 +171,14 @@ export const analysisAPI = {
       const filename = file instanceof File ? file.name : 'upload-file';
       formData.append('files', file, filename);
     });
+    if (options.compareScope === 'selected') {
+      console.log('[선택 비교] POST /api/analysis/chat', {
+        conversationId: options.conversationId,
+        documentIds: options.documentIds || [],
+        selectedSourceNames: options.selectedSourceNames || [],
+        fileCount: files.filter(isBrowserFile).length,
+      });
+    }
 
     return apiClient.post('/api/analysis/chat', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
