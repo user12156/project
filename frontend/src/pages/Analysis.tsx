@@ -1098,28 +1098,77 @@ function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, c
       return;
     }
 
-    const compareOptions = {
-      compareMode: true,
-      compareScope: 'selected',
-      useCurrentFilesOnly: true,
-      documentIds: selectedDocuments.map((doc) => doc.documentId),
-      selectedSourceNames: selectedDocuments.map((doc) => doc.filename),
-      requestFiles: selectedUploadFiles,
+    const question = '선택한 문서들을 비교 분석해줘.';
+    const documentIds = selectedDocuments.map((doc) => doc.documentId);
+    const selectedSourceNames = selectedDocuments.map((doc) => doc.filename);
+    const conversationId = recentConversationIdRef.current.startsWith('conversation-')
+      ? `conv-${Date.now()}`
+      : recentConversationIdRef.current;
+    recentConversationIdRef.current = conversationId;
+    const userMessage = {
+      id: `user-compare-selected-${Date.now()}`,
+      role: 'user',
+      text: question,
+      createdAt: nowIso(),
     };
-    console.log('[선택 비교] API 호출 시작', compareOptions);
+    const messagesWithQuestion = [...messages, userMessage];
+    console.log('[선택 비교] API 호출 시작', {
+      conversationId,
+      documentIds,
+      selectedSourceNames,
+      requestFileNames: selectedUploadFiles.map((file) => file.name || 'upload-file'),
+    });
 
+    setMessages(messagesWithQuestion);
+    setIsAnalyzing(true);
+    setShowSelectCompareModal(false);
     try {
-      setShowSelectCompareModal(false);
-      await handleSendMessage([], '선택한 문서들을 비교 분석해줘.', compareOptions);
+      console.log('[선택 비교] analysisAPI.chat 직접 호출');
+      const response = await analysisAPI.chat(question, selectedUploadFiles, {
+        conversationId,
+        documentIds,
+        selectedSourceNames,
+        useCurrentFilesOnly: true,
+        compareMode: true,
+        compareScope: 'selected',
+      }, '');
+      const answer = response.data?.answer || response.data?.summary || '선택한 문서 비교 분석을 완료했습니다.';
+      const nextMessages = [
+        ...messagesWithQuestion,
+        {
+          id: `ai-compare-selected-${Date.now()}`,
+          role: 'ai',
+          text: answer,
+          createdAt: nowIso(),
+          suggestedQuestions: response.data?.suggested_questions || [],
+        },
+      ];
+      setMessages(nextMessages);
+      upsertRecentConversation(nextMessages, question, activeFiles);
+      saveSourceFiles([conversationId, effectiveProjectId], activeFiles);
+      if (typeof onConversationChange === 'function') {
+        onConversationChange(conversationId);
+      }
     } catch (error) {
-      console.error('[선택 비교] API 호출 전 오류', error);
+      console.error('[선택 비교] API 호출 실패', error);
+      const serverMessage =
+        error.response?.data?.detail
+        || error.response?.data?.message
+        || error.userMessage
+        || error.message
+        || '알 수 없는 오류';
       const failureMessage = {
         id: `ai-compare-selected-client-error-${Date.now()}`,
         role: 'ai',
-        text: `선택 비교 요청을 시작하지 못했습니다: ${error?.message || '알 수 없는 프론트 오류'}`,
+        text: `선택 비교 요청에 실패했습니다: ${serverMessage}`,
         createdAt: nowIso(),
       };
-      setMessages((prev) => [...prev, failureMessage]);
+      const nextMessages = [...messagesWithQuestion, failureMessage];
+      setMessages(nextMessages);
+      upsertRecentConversation(nextMessages, question, activeFiles);
+    } finally {
+      setIsAnalyzing(false);
+      window.setTimeout(() => promptInputRef.current?.focus(), 0);
     }
   };
 
