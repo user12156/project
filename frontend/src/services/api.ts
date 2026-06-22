@@ -7,9 +7,11 @@ import axios from 'axios';
 interface AnalysisChatOptions {
   conversationId?: string;
   documentIds?: string[];
+  selectedSourceNames?: string[];
   useCurrentFilesOnly?: boolean;
   selectedSourceName?: string;
   compareMode?: boolean;
+  compareScope?: 'chat' | 'current' | 'all' | 'selected';
 }
 
 const isBrowserFile = (file: unknown): file is File | Blob =>
@@ -157,9 +159,13 @@ export const analysisAPI = {
     (options.documentIds || []).forEach((documentId) => {
       formData.append('document_ids', documentId);
     });
+    (options.selectedSourceNames || []).forEach((sourceName) => {
+      formData.append('selected_source_names', sourceName);
+    });
     formData.append('use_current_files_only', options.useCurrentFilesOnly ? 'true' : 'false');
     if (options.selectedSourceName) formData.append('selected_source_name', options.selectedSourceName);
     formData.append('compare_mode', options.compareMode ? 'true' : 'false');
+    formData.append('compare_scope', options.compareScope || 'chat');
     if (analysisText) formData.append('analysis_text', analysisText);
     files.filter(isBrowserFile).forEach((file) => {
       const filename = file instanceof File ? file.name : 'upload-file';

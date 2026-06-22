@@ -15,6 +15,7 @@ import {
   TopMenuBar,
   UserRow,
   ModalBackdrop,
+  ChartSaveModal,
 } from './styles/Analysis.styles';
 import {
   InviteCodePill,
@@ -629,6 +630,7 @@ interface AnalysisProps {
 
 function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, clearRestore, onConversationChange, onLoginRequired }: AnalysisProps) {
   const fileInputRef = useRef(null);
+  const compareFileInputRef = useRef(null);
   const pendingVisualTypeRef = useRef<'image' | 'graph' | 'table' | null>(null);
   const promptInputRef = useRef(null);
   const scrollRef = useRef(null);
@@ -664,9 +666,19 @@ function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, c
   const [isResizingSource, setIsResizingSource] = useState(false);
   const [isVisualLibraryCollapsed, setIsVisualLibraryCollapsed] = useState(true);
   const [isClipMenuOpen, setIsClipMenuOpen] = useState(false);
+  const [showCompareMenu, setShowCompareMenu] = useState(false);
+  const [showSelectCompareModal, setShowSelectCompareModal] = useState(false);
+  const [selectedCompareDocIds, setSelectedCompareDocIds] = useState<string[]>([]);
 
   const currentInviteCode = currentProject?.inviteCode || restoredData?.inviteCode || '저장 후 생성';
   const sourceFiles = useMemo(() => mergeUniqueFiles(activeFiles, files), [activeFiles, files]);
+  const uploadedDocuments = useMemo(
+    () => activeFiles.map((file) => ({
+      documentId: getFileKey(file),
+      filename: file.name || '업로드 문서',
+    })),
+    [activeFiles]
+  );
   const selectedSourceFile = sourceFiles.find((file) => getFileKey(file) === selectedSourceKey) || sourceFiles[0];
 
   const cacheSourcePreview = (fileKey: string, preview: any) => {
@@ -794,6 +806,7 @@ function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, c
     const handleOutsideClick = (event) => {
       if (clipMenuRef.current?.contains?.(event.target)) return;
       setIsClipMenuOpen(false);
+      setShowCompareMenu(false);
     };
 
     window.addEventListener('mousedown', handleOutsideClick);
@@ -1023,7 +1036,98 @@ function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, c
 
   const handleClipFileAdd = () => {
     setIsClipMenuOpen(false);
+    setShowCompareMenu(false);
     fileInputRef.current?.click();
+  };
+
+  const handleCompareAllDocuments = () => {
+    setIsClipMenuOpen(false);
+    setShowCompareMenu(false);
+    handleSendMessage(files, '전체 업로드된 문서들을 비교 분석해줘.', {
+      compareMode: true,
+      compareScope: 'all',
+      useCurrentFilesOnly: false,
+    });
+  };
+
+  const handleCompareFilePickerOpen = () => {
+    setIsClipMenuOpen(false);
+    setShowCompareMenu(false);
+    compareFileInputRef.current?.click();
+  };
+
+  const handleSelectCompareModalOpen = () => {
+    const availableIds = new Set(uploadedDocuments.map((doc) => doc.documentId));
+    setSelectedCompareDocIds((prev) => prev.filter((id) => availableIds.has(id)));
+    setIsClipMenuOpen(false);
+    setShowCompareMenu(false);
+    setShowSelectCompareModal(true);
+  };
+
+  const handleCompareDocumentToggle = (documentId: string, checked: boolean) => {
+    setSelectedCompareDocIds((prev) => (
+      checked
+        ? Array.from(new Set([...prev, documentId]))
+        : prev.filter((id) => id !== documentId)
+    ));
+  };
+
+  const handleCompareSelectedDocuments = () => {
+    const selectedDocuments = uploadedDocuments.filter((doc) => (
+      selectedCompareDocIds.includes(doc.documentId)
+    ));
+    const selectedUploadFiles = activeFiles.filter((file) => (
+      selectedCompareDocIds.includes(getFileKey(file)) && isUploadableFile(file)
+    ));
+
+    if (selectedDocuments.length < 2) {
+      const assistantMessage = {
+        id: `ai-compare-selected-documents-required-${Date.now()}`,
+        role: 'ai',
+        text: '📄 선택 비교를 위해서는 업로드된 문서 중 2개 이상을 선택해주세요.',
+        createdAt: nowIso(),
+      };
+      const nextMessages = [...messages, assistantMessage];
+      setMessages(nextMessages);
+      upsertRecentConversation(nextMessages, '선택 비교 문서 안내', activeFiles);
+      return;
+    }
+
+    setShowSelectCompareModal(false);
+    handleSendMessage([], '선택한 문서들을 비교 분석해줘.', {
+      compareMode: true,
+      compareScope: 'selected',
+      useCurrentFilesOnly: true,
+      documentIds: selectedDocuments.map((doc) => doc.documentId),
+      selectedSourceNames: selectedDocuments.map((doc) => doc.filename),
+      requestFiles: selectedUploadFiles,
+    });
+  };
+
+  const handleCompareFileUpload = (event) => {
+    const selectedFiles = Array.from(event.target.files || []);
+    event.target.value = '';
+    setIsClipMenuOpen(false);
+    setShowCompareMenu(false);
+
+    if (selectedFiles.length < 2) {
+      const assistantMessage = {
+        id: `ai-compare-current-files-required-${Date.now()}`,
+        role: 'ai',
+        text: '📄 파일 비교 분석을 위해서는 2개 이상의 문서를 업로드해주세요.',
+        createdAt: nowIso(),
+      };
+      const nextMessages = [...messages, assistantMessage];
+      setMessages(nextMessages);
+      upsertRecentConversation(nextMessages, '파일 비교 분석 문서 업로드 안내', selectedFiles);
+      return;
+    }
+
+    handleSendMessage(selectedFiles, '방금 업로드한 파일들을 비교 분석해줘.', {
+      compareMode: true,
+      compareScope: 'current',
+      useCurrentFilesOnly: true,
+    });
   };
 
   const handleCreateVisualFromFiles = async (
@@ -1095,6 +1199,7 @@ function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, c
 
   const handleCreateVisualFromMenu = (visualType: 'image' | 'graph' | 'table') => {
     if (isAnalyzing) return;
+    setShowCompareMenu(false);
     if (visualType === 'image') {
       setIsClipMenuOpen(false);
       if (files.length > 0) {
@@ -1241,21 +1346,28 @@ function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, c
     const nextQuestion = overrideQuestion || promptText.trim();
     const suggestedDepth = Math.max(0, Number(options.suggestedDepth || 0));
     const newFiles = [...filesToSend];
-    const pendingFiles = newFiles.length > 0 ? mergeUniqueFiles(activeFiles, newFiles) : [...activeFiles];
+    const compareScope = options.compareScope || 'chat';
+    const pendingFiles = compareScope === 'current'
+      ? [...newFiles]
+      : (newFiles.length > 0 ? mergeUniqueFiles(activeFiles, newFiles) : [...activeFiles]);
     const activeUploadFiles = pendingFiles.filter(isUploadableFile);
     const question = nextQuestion || '업로드한 문서를 요약해줘';
-    const compareMode = isCompareQuestion(question) || pendingFiles.length >= 2;
+    const compareMode = options.compareMode ?? (isCompareQuestion(question) || pendingFiles.length >= 2);
     const selectedPreviewFile = selectedSourceFile && pendingFiles.some((file) => getFileKey(file) === getFileKey(selectedSourceFile))
       ? selectedSourceFile
       : null;
     const selectedFileAfterUpload = selectedPreviewFile || newFiles[0] || pendingFiles[0];
     const selectedFileKey = selectedFileAfterUpload ? getFileKey(selectedFileAfterUpload) : '';
     const selectedUploadFile = pendingFiles.find((file) => getFileKey(file) === selectedFileKey && isUploadableFile(file));
-    const requestFiles = compareMode
-      ? activeUploadFiles
-      : (selectedUploadFile ? [selectedUploadFile] : []);
-    const requestDocumentIds = (compareMode ? pendingFiles : (selectedFileAfterUpload ? [selectedFileAfterUpload] : []))
-      .map(getFileKey);
+    const requestFiles = compareScope === 'selected'
+      ? (Array.isArray(options.requestFiles) ? options.requestFiles.filter(isUploadableFile) : [])
+      : (compareMode ? activeUploadFiles : (selectedUploadFile ? [selectedUploadFile] : []));
+    const requestDocumentIds = Array.isArray(options.documentIds)
+      ? options.documentIds
+      : (compareMode ? pendingFiles : (selectedFileAfterUpload ? [selectedFileAfterUpload] : [])).map(getFileKey);
+    const requestSourceNames = Array.isArray(options.selectedSourceNames)
+      ? options.selectedSourceNames
+      : [];
     const hasNewUpload = newFiles.length > 0;
     if (!nextQuestion && pendingFiles.length === 0) {
       window.alert('질문을 입력하거나 파일을 선택해주세요.');
@@ -1300,7 +1412,10 @@ function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, c
       onConversationChange(recentConversationIdRef.current);
     }
 
-    const hasStoredFileNamesOnly = pendingFiles.length > 0 && requestFiles.length === 0 && !getLatestAnalysisText(messages);
+    const hasStoredFileNamesOnly = compareScope !== 'selected'
+      && pendingFiles.length > 0
+      && requestFiles.length === 0
+      && !getLatestAnalysisText(messages);
     if (hasStoredFileNamesOnly) {
       const messagesWithAnswer = [
         ...messagesWithQuestion,
@@ -1328,9 +1443,11 @@ function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, c
       const response = await analysisAPI.chat(question, requestFiles, {
         conversationId: recentConversationIdRef.current,
         documentIds: requestDocumentIds,
-        useCurrentFilesOnly: true,
+        selectedSourceNames: requestSourceNames,
+        useCurrentFilesOnly: options.useCurrentFilesOnly ?? true,
         selectedSourceName: compareMode ? '' : selectedUploadFile?.name || selectedFileAfterUpload?.name || '',
         compareMode,
+        compareScope,
       }, analysisHistory);
       const providerLabelMap: Record<string, string> = {
         openai: 'OpenAI',
@@ -1540,6 +1657,8 @@ function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, c
     setIsProjectSaveOpen(false);
     setProjectNameInput('');
     setSelectedVisual(null);
+    setShowSelectCompareModal(false);
+    setSelectedCompareDocIds([]);
     setExpandedVisualIds([]);
     setSelectedSourceKey('');
     setSourcePreview({ kind: 'empty', url: '', text: '', message: '' });
@@ -1794,6 +1913,14 @@ function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, c
   return (
     <Container>
       <input type="file" ref={fileInputRef} onChange={handleFileChange} style={{ display: 'none' }} multiple />
+      <input
+        ref={compareFileInputRef}
+        type="file"
+        multiple
+        hidden
+        accept=".pdf,.hwpx,.hwp,.docx,.txt,.png,.jpg,.jpeg"
+        onChange={handleCompareFileUpload}
+      />
       <MainLayout>
         <VisualPanel $libraryCollapsed={isVisualLibraryCollapsed}>
           <div
@@ -2045,7 +2172,12 @@ function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, c
                 <button
                   type="button"
                   className={`clip-upload${isClipMenuOpen ? ' active' : ''}`}
-                  onClick={() => setIsClipMenuOpen((prev) => !prev)}
+                  onClick={() => {
+                    setIsClipMenuOpen((prev) => {
+                      if (prev) setShowCompareMenu(false);
+                      return !prev;
+                    });
+                  }}
                   aria-label="생성 메뉴 열기"
                   aria-expanded={isClipMenuOpen}
                   title="생성 메뉴"
@@ -2061,12 +2193,42 @@ function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, c
                     <div className="clip-menu-divider" aria-hidden="true" />
                     <button type="button" role="menuitem" onClick={() => handleCreateVisualFromMenu('image')}>
                       <FiImage aria-hidden="true" />
-                      <span>이미지 파일 추출</span>
+                      <span>이미지 만들기</span>
                     </button>
                     <button type="button" role="menuitem" onClick={() => handleCreateVisualFromMenu('table')}>
                       <FiGrid aria-hidden="true" />
                       <span>표 만들기</span>
                     </button>
+                    <div className="compare-menu-group">
+                      <button
+                        type="button"
+                        className={showCompareMenu ? 'compare-menu-trigger active' : 'compare-menu-trigger'}
+                        role="menuitem"
+                        aria-expanded={showCompareMenu}
+                        onClick={() => setShowCompareMenu((prev) => !prev)}
+                      >
+                        <FiRefreshCcw aria-hidden="true" />
+                        <span>파일 비교 분석</span>
+                        <FiChevronRight className="compare-menu-chevron" aria-hidden="true" />
+                      </button>
+                      {showCompareMenu && (
+                        <div className="compare-sub-menu" role="menu" aria-label="파일 비교 분석 범위">
+                          <button type="button" role="menuitem" onClick={handleCompareAllDocuments}>
+                            전체 문서 비교
+                          </button>
+                          <button
+                            type="button"
+                            role="menuitem"
+                            onClick={handleCompareFilePickerOpen}
+                          >
+                            새 파일 업로드해서 비교
+                          </button>
+                          <button type="button" role="menuitem" onClick={handleSelectCompareModalOpen}>
+                            업로드된 문서 선택 비교
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -2087,6 +2249,49 @@ function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, c
           <PreviewModalContainer onClick={(e) => e.stopPropagation()}>
             {renderVisualArtifact(selectedVisual, false, true)}
           </PreviewModalContainer>
+        </ModalBackdrop>
+      )}
+
+      {showSelectCompareModal && (
+        <ModalBackdrop onClick={() => setShowSelectCompareModal(false)}>
+          <ChartSaveModal onClick={(event) => event.stopPropagation()}>
+            <div className="modal-header">
+              <h3>비교할 문서 선택</h3>
+              <button type="button" onClick={() => setShowSelectCompareModal(false)} aria-label="닫기">
+                ×
+              </button>
+            </div>
+            {uploadedDocuments.length === 0 ? (
+              <p>아직 분석에 업로드된 문서가 없습니다.</p>
+            ) : (
+              <div className="compare-document-list">
+                {uploadedDocuments.map((doc) => (
+                  <label key={doc.documentId}>
+                    <input
+                      type="checkbox"
+                      checked={selectedCompareDocIds.includes(doc.documentId)}
+                      onChange={(event) => handleCompareDocumentToggle(doc.documentId, event.target.checked)}
+                    />
+                    <FiFileText aria-hidden="true" />
+                    <span>{doc.filename}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+            <div className="modal-footer">
+              <button type="button" className="secondary" onClick={() => setShowSelectCompareModal(false)}>
+                닫기
+              </button>
+              <button
+                type="button"
+                className="primary"
+                onClick={handleCompareSelectedDocuments}
+                disabled={uploadedDocuments.length === 0}
+              >
+                선택 문서 비교
+              </button>
+            </div>
+          </ChartSaveModal>
         </ModalBackdrop>
       )}
     </Container>

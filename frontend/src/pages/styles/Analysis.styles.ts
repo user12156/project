@@ -972,6 +972,47 @@ export const BottomPromptInput = styled.div`
       white-space: nowrap;
     }
 
+    .compare-menu-group {
+      display: grid;
+      gap: 4px;
+    }
+
+    .clip-action-menu .compare-menu-trigger {
+      position: relative;
+    }
+
+    .clip-action-menu .compare-menu-trigger.active {
+      background: #f0fdfa;
+      color: #0f766e;
+    }
+
+    .clip-action-menu .compare-menu-chevron {
+      width: 16px;
+      height: 16px;
+      margin-left: auto;
+      transition: transform 0.18s ease;
+    }
+
+    .clip-action-menu .compare-menu-trigger.active .compare-menu-chevron {
+      transform: rotate(90deg);
+    }
+
+    .compare-sub-menu {
+      display: grid;
+      gap: 3px;
+      margin-left: 30px;
+      padding: 4px 0 2px 10px;
+      border-left: 2px solid #ccfbf1;
+    }
+
+    .clip-action-menu .compare-sub-menu button {
+      min-height: 36px;
+      padding: 0 9px;
+      font-size: 12px;
+      font-weight: 700;
+      color: #475569;
+    }
+
     i { 
       color: #94a3b8; font-size: 18px; cursor: pointer; 
       transition: color 0.15s;
@@ -1074,6 +1115,55 @@ export const ChartSaveModal = styled.div`
     color: #475569;
   }
 
+  .compare-document-list {
+    display: grid;
+    gap: 8px;
+    max-height: min(360px, 50vh);
+    padding: 16px 20px;
+    overflow-y: auto;
+  }
+
+  .compare-document-list label {
+    min-width: 0;
+    min-height: 44px;
+    padding: 10px 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 9px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: #334155;
+    font-size: 13px;
+    font-weight: 750;
+    cursor: pointer;
+  }
+
+  .compare-document-list label:has(input:checked) {
+    border-color: #5eead4;
+    background: #f0fdfa;
+    color: #0f766e;
+  }
+
+  .compare-document-list input {
+    width: 17px;
+    height: 17px;
+    accent-color: #0ea5a4;
+    flex: 0 0 auto;
+  }
+
+  .compare-document-list svg {
+    width: 18px;
+    height: 18px;
+    flex: 0 0 auto;
+  }
+
+  .compare-document-list span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .modal-footer {
     display: flex;
     gap: 10px;
@@ -1096,6 +1186,11 @@ export const ChartSaveModal = styled.div`
     border: none;
     background: #0ea5a4;
     color: #ffffff;
+  }
+
+  .primary:disabled {
+    background: #cbd5e1;
+    cursor: not-allowed;
   }
 
   @media (max-width: 420px) {
