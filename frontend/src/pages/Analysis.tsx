@@ -1439,7 +1439,9 @@ function AnalysisC({ projectId, projectTitle, restoredData, newAnalysisSignal, c
     setIsAnalyzing(true);
 
     try {
-      const analysisHistory = hasNewUpload ? '' : getLatestAnalysisText(messages);
+      const analysisHistory = hasNewUpload || compareScope === 'selected'
+        ? ''
+        : getLatestAnalysisText(messages);
       const response = await analysisAPI.chat(question, requestFiles, {
         conversationId: recentConversationIdRef.current,
         documentIds: requestDocumentIds,

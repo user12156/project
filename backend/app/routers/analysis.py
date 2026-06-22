@@ -80,11 +80,32 @@ def _filter_docs_by_ids_or_names(
     }
     if not selected_ids and not selected_names:
         return []
-    return [
+    matched_by_ids = [
         doc for doc in docs
         if str(doc.get("document_id", "")).strip() in selected_ids
-        or _normalize_name(doc.get("filename", "")) in selected_names
     ]
+    if selected_ids and len(matched_by_ids) >= len(selected_ids):
+        return matched_by_ids
+
+    matched_by_names = [
+        doc for doc in docs
+        if _normalize_name(doc.get("filename", "")) in selected_names
+    ]
+    if selected_names and len(matched_by_names) >= len(selected_names):
+        return matched_by_names
+
+    merged_matches = []
+    seen = set()
+    for doc in [*matched_by_ids, *matched_by_names]:
+        key = (
+            str(doc.get("document_id", "")).strip(),
+            _normalize_name(doc.get("filename", "")),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        merged_matches.append(doc)
+    return merged_matches
 
 
 def _merge_cached_docs(existing_docs: list[dict], new_docs: list[dict]) -> list[dict]:
@@ -150,6 +171,19 @@ async def analyze_chat(
         for source_name in selected_source_names
         if str(source_name).strip()
     ]
+    if compare_scope == "selected":
+        logger.warning(
+            "COMPARE DEBUG scope=selected document_ids=%s source_names=%s",
+            requested_document_ids,
+            requested_source_names,
+        )
+        logger.warning(
+            "COMPARE DEBUG cache=%s",
+            [
+                doc.get("filename")
+                for doc in DOCUMENT_SESSION_CACHE.get(session_key, [])
+            ],
+        )
     if should_compare and compare_scope == "current" and not files and not requested_document_ids:
         return {
             "answer": "📄 현재 업로드된 문서만 비교하려면 비교할 문서를 먼저 업로드해주세요.",
@@ -178,13 +212,20 @@ async def analyze_chat(
         extracted_docs = []
     elif session_key and session_key in DOCUMENT_SESSION_CACHE:
         cached_docs = DOCUMENT_SESSION_CACHE[session_key]
-        if current_files_only:
-            cached_docs = _filter_docs_by_ids_or_names(
+        if compare_scope == "selected":
+            extracted_docs = _filter_docs_by_ids_or_names(
                 cached_docs,
                 requested_document_ids,
                 requested_source_names,
             )
-        extracted_docs = _filter_selected_docs(cached_docs, selected_source_name, should_compare)
+        elif current_files_only:
+            extracted_docs = _filter_docs_by_ids_or_names(
+                cached_docs,
+                requested_document_ids,
+                requested_source_names,
+            )
+        else:
+            extracted_docs = _filter_selected_docs(cached_docs, selected_source_name, should_compare)
     elif analysis_text:
         extracted_docs = []
     else:
@@ -229,13 +270,31 @@ async def analyze_chat(
                 extracted_docs,
             )
 
-        if current_files_only and (requested_document_ids or requested_source_names):
+        if compare_scope == "selected":
             extracted_docs = _filter_docs_by_ids_or_names(
                 extracted_docs,
                 requested_document_ids,
                 requested_source_names,
             )
-        extracted_docs = _filter_selected_docs(extracted_docs, selected_source_name, should_compare)
+        elif current_files_only and (requested_document_ids or requested_source_names):
+            extracted_docs = _filter_docs_by_ids_or_names(
+                extracted_docs,
+                requested_document_ids,
+                requested_source_names,
+            )
+        else:
+            extracted_docs = _filter_selected_docs(extracted_docs, selected_source_name, should_compare)
+
+    if compare_scope == "selected":
+        extracted_docs = _filter_docs_by_ids_or_names(
+            extracted_docs,
+            requested_document_ids,
+            requested_source_names,
+        )
+        logger.warning(
+            "COMPARE DEBUG final_docs=%s",
+            [doc.get("filename") for doc in extracted_docs],
+        )
 
     if should_compare and len([
         doc for doc in extracted_docs
