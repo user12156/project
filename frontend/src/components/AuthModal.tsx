@@ -46,6 +46,7 @@ const DEFAULT_GOOGLE_ALLOWED_ORIGINS = [
   'https://papemate.vercel.app',
   'https://project-papermate.vercel.app',
   'https://project-beta-one-36.vercel.app',
+  'https://project-jras.vercel.app',
 ];
 
 const getAllowedGoogleOrigins = () => {
