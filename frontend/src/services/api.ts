@@ -21,13 +21,6 @@ const getApiBaseUrl = () => {
   const configuredUrl = import.meta.env.VITE_API_BASE_URL || import.meta.env.REACT_APP_API_BASE_URL;
 
   if (configuredUrl) {
-    const isHttpsPage = typeof window !== 'undefined' && window.location.protocol === 'https:';
-    if (!import.meta.env.DEV && isHttpsPage && configuredUrl.startsWith('http://')) {
-      // eslint-disable-next-line no-console
-      console.warn('Ignoring an insecure VITE_API_BASE_URL on HTTPS. Vercel rewrites /api to the EC2 backend.');
-      return '';
-    }
-
     return configuredUrl.replace(/\/$/, '');
   }
 

@@ -44,6 +44,8 @@ const DEFAULT_GOOGLE_ALLOWED_ORIGINS = [
   'http://localhost:3004',
   'http://127.0.0.1:3004',
   'https://papemate.vercel.app',
+  'https://project-papermate.vercel.app',
+  'https://project-beta-one-36.vercel.app',
 ];
 
 const getAllowedGoogleOrigins = () => {
